@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bot-config
+  namespace: {{ .Values.namespace }}
+data:
+  APPSETTINGS_OVERRIDES.json: |
+    {
+      "Mongo": {
+        "Database": "birthdays"
+      },
+      "Reminder": {
+        "Cron": "{{ .Values.reminder.cron }}"
+      },
+      "Metrics": {
+        "Enable": {{ .Values.metrics.enable | toJson }},
+        "ScrapeEndpoint": "/metrics"
+      }
+    }

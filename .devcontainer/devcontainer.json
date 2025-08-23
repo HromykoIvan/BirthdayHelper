@@ -1,0 +1,15 @@
+{
+    "name": "BirthdayBot Dev",
+    "dockerFile": "Dockerfile",
+    "context": "..",
+    "remoteUser": "vscode",
+    "customizations": {
+      "vscode": {
+        "extensions": [
+          "ms-dotnettools.csharp",
+          "mongodb.mongodb-vscode"
+        ]
+      }
+    },
+    "postCreateCommand": "dotnet restore BirthdayBot.sln"
+  }  

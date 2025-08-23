@@ -1,0 +1,52 @@
+// path: docker-compose.yaml
+version: "3.9"
+services:
+  mongodb:
+    image: mongo:6.0
+    container_name: mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: birthdays
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mongo-init-replica:
+    image: mongo:6.0
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    entrypoint: ["bash", "-c", "mongosh --host mongodb:27017 --eval 'rs.initiate({_id:\"rs0\", members:[{_id:0, host:\"mongodb:27017\"}]})' || true"]
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      MONGODB_URI: mongodb://mongodb:27017/birthdays?replicaSet=rs0
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mongo-init-replica
+
+  ngrok:
+    image: ngrok/ngrok:3
+    command: http --domain=${NGROK_DOMAIN} api:8080
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    depends_on:
+      - api
+
+volumes:
+  mongo_data:

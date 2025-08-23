@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+**/.vs/
+**/*.user
+**/*.suo
+**/*.swp
+**/*.DS_Store
+.git
+.github
+.vscode
+.devcontainer
+deploy
+tests
+*.md

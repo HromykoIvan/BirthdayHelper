@@ -1,0 +1,13 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: birthday-bot-rb
+  namespace: birthday-bot
+subjects:
+  - kind: ServiceAccount
+    name: birthday-bot-sa
+    namespace: birthday-bot
+roleRef:
+  kind: Role
+  name: birthday-bot-role
+  apiGroup: rbac.authorization.k8s.io

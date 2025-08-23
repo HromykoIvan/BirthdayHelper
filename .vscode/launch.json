@@ -1,0 +1,21 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "BirthdayBot Api",
+        "type": "coreclr",
+        "request": "launch",
+        "program": "${workspaceFolder}/backend/src/BirthdayBot.Api/bin/Debug/net8.0/BirthdayBot.Api.dll",
+        "args": [],
+        "cwd": "${workspaceFolder}/backend/src/BirthdayBot.Api",
+        "env": {
+          "ASPNETCORE_URLS": "http://0.0.0.0:8080",
+          "MONGODB_URI": "mongodb://localhost:27017/birthdays",
+          "TELEGRAM_BOT_TOKEN": "REPLACE_ME_TELEGRAM_TOKEN",
+          "TELEGRAM_WEBHOOK_SECRET": "REPLACE_ME_WEBHOOK_SECRET"
+        },
+        "preLaunchTask": "build"
+      }
+    ]
+  }
+  

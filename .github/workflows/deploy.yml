@@ -1,0 +1,65 @@
+name: Deploy to EKS
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_run:
+    workflows: [ "Build & Push to ECR" ]
+    types:
+      - completed
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  ECR_REPO: ${{ secrets.ECR_REPO }}
+  CHART_DIR: deploy/helm/birthday-bot
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.0'
+
+      - name: Update kubeconfig via secret (alternative to IRSA)
+        if: secrets.KUBE_CONFIG_B64 != ''
+        run: |
+          echo "${{ secrets.KUBE_CONFIG_B64 }}" | base64 -d > kubeconfig
+          export KUBECONFIG=$PWD/kubeconfig
+          kubectl get ns
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.15.2'
+
+      - name: Helm upgrade --install
+        env:
+          IMAGE: ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}
+          DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
+          STORAGE_CLASS: ${{ secrets.STORAGE_CLASS }}
+        run: |
+          TAG="latest"
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            TAG="${{ github.ref_name }}"
+          fi
+          helm upgrade --install birthday-bot $CHART_DIR \
+            --namespace birthday-bot --create-namespace \
+            --set image.repository=$IMAGE \
+            --set image.tag=$TAG \
+            --set ingress.host=$DOMAIN_NAME \
+            --set mongodb.storageClass=$STORAGE_CLASS

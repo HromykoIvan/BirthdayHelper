@@ -1,0 +1,44 @@
+namespace: birthday-bot
+
+image:
+  repository: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/birthday-bot
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+
+serviceAccount:
+  create: true
+  name: birthday-bot-sa
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/birthday-bot-deployer"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: birthdays.example.com
+
+mongodb:
+  storageClass: gp3
+  storageSize: 5Gi
+
+secrets:
+  telegramBotTokenB64: "UkVQTEFDRV9NRV9URUxFR1JBTV9UT0tFTg=="
+  telegramWebhookSecretB64: "UkVQTEFDRV9NRV9XRUJIT09LX1NFQ1JFVA=="
+  mongodbUriB64: "bW9uZ29kYjovL3VzZXI6cGFzc0Btb25nb2RiOjI3MDE3L2JpcnRoZGF5cz9yZXBsaWNhU2V0PXJzMA=="
+  aspnetcoreEnvB64: "UHJvZHVjdGlvbg=="
+  tzB64: "RXVyb3BlL1dhcnNhdw=="
+
+metrics:
+  enable: true
+
+reminder:
+  cron: "* * * * *"
