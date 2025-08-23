@@ -1,8 +1,13 @@
 {
   "version": 2,
-  "dgSpecHash": "vpGVjFZEc1EW0onKrVxUSxwc4L0i2bNEE17x+fw1xJd83Lu39Cp4K6VX6IxgCCmZ8YIF+Fn1WNOFN+Nr3Igh/g==",
+  "dgSpecHash": "7JwFy32uMe7RHIkS43jGirVOdirKqsmr6K9BEH8RGvWMWIz/NEqPskh6Nl4MeNxqhC/AHtRpJ+mnY+HB7VVZNw==",
   "success": true,
   "projectFilePath": "C:\\MyProjects\\TelegramBots\\BithdayHelper\\backend\\src\\BirthdayBot.Domain\\BirthdayBot.Domain.csproj",
-  "expectedPackageFiles": [],
+  "expectedPackageFiles": [
+    "C:\\Users\\igromyko\\.nuget\\packages\\mongodb.bson\\2.25.0\\mongodb.bson.2.25.0.nupkg.sha512",
+    "C:\\Users\\igromyko\\.nuget\\packages\\nodatime\\3.1.11\\nodatime.3.1.11.nupkg.sha512",
+    "C:\\Users\\igromyko\\.nuget\\packages\\system.memory\\4.5.5\\system.memory.4.5.5.nupkg.sha512",
+    "C:\\Users\\igromyko\\.nuget\\packages\\system.runtime.compilerservices.unsafe\\5.0.0\\system.runtime.compilerservices.unsafe.5.0.0.nupkg.sha512"
+  ],
   "logs": []
 }

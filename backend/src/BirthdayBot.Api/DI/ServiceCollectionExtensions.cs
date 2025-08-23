@@ -1,13 +1,16 @@
-// path: backend/src/BirthdayBot.Api/DI/ServiceCollectionExtensions.cs
+
 using BirthdayBot.Api.Options;
 using BirthdayBot.Application.Interfaces;
 using BirthdayBot.Infrastructure.Mongo;
+using BirthdayBot.Infrastructure.Options;
 using BirthdayBot.Infrastructure.Services;
 using BirthdayBot.Infrastructure.State;
 using Microsoft.Extensions.Options;
-using MongoDB.Driver;
 using OpenTelemetry.Metrics;
 using Telegram.Bot;
+using BirthdayBot.Application.Services;
+using BirthdayBot.Infrastructure.Sessions;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace BirthdayBot.Api.DI;
 
@@ -31,7 +34,20 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<InMemoryConversationState>();
         services.AddSingleton<IUpdateHandler, UpdateHandler>();
+        services.AddMemoryCache();
+        services.AddSingleton<IConversationSessionStore, InMemoryConversationSessionStore>();
+        services.AddScoped<IWizardFlow, AddBirthdayWizardFlow>();
+        // Хранилище сессий мастера
+        services.AddSingleton<IAddBirthdayWizardSessionStore, InMemoryAddBirthdayWizardSessionStore>();
 
+        // TimeZoneResolver + HttpClient
+        services.AddHttpClient<ITimeZoneResolver, TimeZoneResolver>();
+
+        // Upcoming
+        services.AddSingleton<IUpcomingService, UpcomingService>();
+
+        // Flow (если вы инжектите напрямую)
+        services.AddTransient<AddBirthdayWizardFlow>();
         services.AddSingleton<ITelegramBotClient>(sp =>
         {
             var bot = sp.GetRequiredService<IOptions<BotOptions>>().Value;
@@ -40,11 +56,9 @@ public static class ServiceCollectionExtensions
 
         services.AddHostedService<ReminderHostedService>();
 
-        // Health checks
         services.AddHealthChecks()
             .AddMongoDb(sp => sp.GetRequiredService<IOptions<MongoOptions>>().Value.ConnectionString, name: "mongodb");
 
-        // OpenTelemetry + Prometheus
         var metrics = cfg.GetSection("Metrics").Get<MetricsOptions>() ?? new MetricsOptions();
         if (metrics.Enable)
         {

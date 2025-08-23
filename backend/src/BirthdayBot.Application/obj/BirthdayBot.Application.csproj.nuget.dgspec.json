@@ -14,6 +14,7 @@
         "outputPath": "C:\\MyProjects\\TelegramBots\\BithdayHelper\\backend\\src\\BirthdayBot.Application\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
+          "C:\\MyProjects\\TelegramBots\\BithdayHelper\\NuGet.Config",
           "C:\\Users\\igromyko\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
@@ -21,9 +22,81 @@
           "net8.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-          "https://api.nuget.org/v3/index.json": {},
-          "https://idt-416223954868.d.codeartifact.us-east-1.amazonaws.com/nuget/team_coreservices-nuget/v3/index.json": {}
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "C:\\MyProjects\\TelegramBots\\BithdayHelper\\backend\\src\\BirthdayBot.Domain\\BirthdayBot.Domain.csproj": {
+                "projectPath": "C:\\MyProjects\\TelegramBots\\BithdayHelper\\backend\\src\\BirthdayBot.Domain\\BirthdayBot.Domain.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "Microsoft.Extensions.Logging.Abstractions": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
+            "Telegram.Bot": {
+              "target": "Package",
+              "version": "[19.0.0, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.206/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "C:\\MyProjects\\TelegramBots\\BithdayHelper\\backend\\src\\BirthdayBot.Domain\\BirthdayBot.Domain.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\MyProjects\\TelegramBots\\BithdayHelper\\backend\\src\\BirthdayBot.Domain\\BirthdayBot.Domain.csproj",
+        "projectName": "BirthdayBot.Domain",
+        "projectPath": "C:\\MyProjects\\TelegramBots\\BithdayHelper\\backend\\src\\BirthdayBot.Domain\\BirthdayBot.Domain.csproj",
+        "packagesPath": "C:\\Users\\igromyko\\.nuget\\packages\\",
+        "outputPath": "C:\\MyProjects\\TelegramBots\\BithdayHelper\\backend\\src\\BirthdayBot.Domain\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\MyProjects\\TelegramBots\\BithdayHelper\\NuGet.Config",
+          "C:\\Users\\igromyko\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
           "net8.0": {
@@ -45,6 +118,16 @@
       "frameworks": {
         "net8.0": {
           "targetAlias": "net8.0",
+          "dependencies": {
+            "MongoDB.Bson": {
+              "target": "Package",
+              "version": "[2.25.0, )"
+            },
+            "NodaTime": {
+              "target": "Package",
+              "version": "[3.1.11, )"
+            }
+          },
           "imports": [
             "net461",
             "net462",

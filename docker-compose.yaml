@@ -1,4 +1,3 @@
-// path: docker-compose.yaml
 version: "3.9"
 services:
   mongodb:
@@ -35,6 +34,10 @@ services:
       MONGODB_URI: mongodb://mongodb:27017/birthdays?replicaSet=rs0
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
+      BOT__TOKEN: ${TELEGRAM_BOT_TOKEN}
+      BOT__WEBHOOKSECRET: ${TELEGRAM_WEBHOOK_SECRET}
+      BOT__WEBHOOKSECRETTOKEN: ${TELEGRAM_WEBHOOK_SECRET}
+
     ports:
       - "8080:8080"
     depends_on:

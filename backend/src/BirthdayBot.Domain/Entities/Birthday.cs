@@ -1,27 +1,19 @@
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
-
 namespace BirthdayBot.Domain.Entities;
 
-public class Birthday
+public sealed class Birthday
 {
-    [BsonId]
-    public ObjectId Id { get; set; }
+    public string Id { get; set; } = default!;
+    public long UserId { get; set; }        // владелец
+    public string Name { get; set; } = default!;
+    public DateOnly Date { get; set; }
 
-    public ObjectId UserId { get; set; }
+    // НОВОЕ (всё опционально)
+    public string? TimeZoneId { get; set; }     // IANA, если хотим хранить именно на запись
+    public string? Relation { get; set; }       // «Семья/Друг/...»
+    public string? Notes { get; set; }          // произвольные заметки
+    public int?   ReminderDaysBefore { get; set; }
 
-    public string Name { get; set; } = "";
-
-    /// <summary>
-    /// Stored as ISO date (no time), assumed local to the person (no TZ).
-    /// </summary>
-    public DateOnly DateOfBirth { get; set; }
-
-    public List<string> Tags { get; set; } = new();
-
-    public string? Relation { get; set; }
-
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    // Для быстрых выборок (необязательно, но полезно)
+    public int Month => Date.Month;
+    public int Day   => Date.Day;
 }

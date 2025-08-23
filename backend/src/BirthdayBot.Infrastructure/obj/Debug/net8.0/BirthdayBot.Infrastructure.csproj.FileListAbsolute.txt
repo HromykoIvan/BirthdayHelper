@@ -1,0 +1,17 @@
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\bin\Debug\net8.0\BirthdayBot.Infrastructure.deps.json
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\bin\Debug\net8.0\BirthdayBot.Infrastructure.dll
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\bin\Debug\net8.0\BirthdayBot.Infrastructure.pdb
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\bin\Debug\net8.0\BirthdayBot.Application.dll
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\bin\Debug\net8.0\BirthdayBot.Domain.dll
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\bin\Debug\net8.0\BirthdayBot.Domain.pdb
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\bin\Debug\net8.0\BirthdayBot.Application.pdb
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\BirthdayBot.Infrastructure.csproj.AssemblyReference.cache
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\BirthdayBot.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\BirthdayBot.Infrastructure.AssemblyInfoInputs.cache
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\BirthdayBot.Infrastructure.AssemblyInfo.cs
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\BirthdayBot.Infrastructure.csproj.CoreCompileInputs.cache
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\Birthday.E5B2738C.Up2Date
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\BirthdayBot.Infrastructure.dll
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\refint\BirthdayBot.Infrastructure.dll
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\BirthdayBot.Infrastructure.pdb
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\ref\BirthdayBot.Infrastructure.dll

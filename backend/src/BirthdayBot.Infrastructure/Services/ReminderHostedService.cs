@@ -1,12 +1,16 @@
-// path: backend/src/BirthdayBot.Infrastructure/Services/ReminderHostedService.cs
 using BirthdayBot.Application.Interfaces;
 using BirthdayBot.Domain.Entities;
 using BirthdayBot.Domain.Enums;
 using BirthdayBot.Domain.Utils;
 using Cronos;
 using MongoDB.Bson;
+using MongoDB.Driver;
 using NodaTime;
 using Telegram.Bot;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Hosting;
+using BirthdayBot.Infrastructure.Options;
 
 namespace BirthdayBot.Infrastructure.Services;
 
@@ -20,7 +24,7 @@ public class ReminderHostedService : BackgroundService, IReminderService
     private readonly ILocalizationService _i18n;
     private readonly ITelegramBotClient _bot;
     private readonly string _cron;
-    private readonly DateTimeZoneProvider _tzdb = DateTimeZoneProviders.Tzdb;
+    private readonly IDateTimeZoneProvider _tzdb = DateTimeZoneProviders.Tzdb;
 
     public ReminderHostedService(
         ILogger<ReminderHostedService> logger,
@@ -30,7 +34,7 @@ public class ReminderHostedService : BackgroundService, IReminderService
         IGreetingGenerator greetings,
         ILocalizationService i18n,
         ITelegramBotClient bot,
-        Microsoft.Extensions.Options.IOptions<BirthdayBot.Api.Options.ReminderOptions> options)
+        IOptions<ReminderOptions> options)
     {
         _logger = logger;
         _users = users;
@@ -51,7 +55,11 @@ public class ReminderHostedService : BackgroundService, IReminderService
             var next = expr.GetNextOccurrence(utcNow.UtcDateTime, TimeZoneInfo.Utc);
             var delay = next.HasValue ? next.Value - utcNow.UtcDateTime : TimeSpan.FromMinutes(1);
             if (delay < TimeSpan.Zero) delay = TimeSpan.FromSeconds(10);
-            await Task.Delay(delay, stoppingToken).ContinueWith(_ => { }, TaskContinuationOptions.OnlyOnCanceled);
+            try
+            {
+                await Task.Delay(delay, stoppingToken);
+            }
+            catch (TaskCanceledException) { break; }
 
             if (!stoppingToken.IsCancellationRequested)
             {
@@ -69,8 +77,6 @@ public class ReminderHostedService : BackgroundService, IReminderService
 
     public async Task RunOnceAsync(CancellationToken ct)
     {
-        // For all users: if now is their NotifyAtLocalTime minute, send reminders for today and tomorrow.
-        // To avoid full scan in large scale, you'd store schedule index; here it's MVP.
         var users = await (await _usersQueryable()).ToListAsync(ct);
 
         foreach (var user in users)
@@ -82,7 +88,7 @@ public class ReminderHostedService : BackgroundService, IReminderService
                 var nowZoned = SystemClock.Instance.GetCurrentInstant().InZone(zone);
                 var todayLocal = nowZoned.Date;
 
-                if (!DateHelpers.TryParseTimeHHmm(user.NotifyAtLocalTime, out var hh, out var mm))
+                if (!BirthdayBot.Domain.Utils.DateHelpers.TryParseTimeHHmm(user.NotifyAtLocalTime, out var hh, out var mm))
                     continue;
 
                 if (nowZoned.TimeOfDay.Hour != hh || nowZoned.TimeOfDay.Minute != mm) continue;
@@ -90,7 +96,7 @@ public class ReminderHostedService : BackgroundService, IReminderService
                 var list = await _birthdays.ListByUserAsync(user.Id, ct);
                 foreach (var b in list)
                 {
-                    var (next, age) = DateHelpers.NextBirthday(todayLocal, b.DateOfBirth);
+                    var (next, age) = BirthdayBot.Domain.Utils.DateHelpers.NextBirthday(todayLocal, b.DateOfBirth);
                     var isToday = next == todayLocal;
                     var isTomorrow = next == todayLocal.PlusDays(1);
 
@@ -125,10 +131,10 @@ public class ReminderHostedService : BackgroundService, IReminderService
 
         async Task<IAsyncCursor<BirthdayBot.Domain.Entities.User>> _usersQueryable()
         {
-            // Small helper to get all users (MVP). For large scale you would paginate.
-            var collection = new MongoDB.Driver.MongoClient(
-                new MongoDB.Driver.MongoUrl(Environment.GetEnvironmentVariable("MONGODB_URI") ?? "mongodb://mongodb:27017/birthdays"))
-                .GetDatabase(Environment.GetEnvironmentVariable("MONGO_DBNAME") ?? "birthdays")
+            var url = Environment.GetEnvironmentVariable("MONGODB_URI") ?? "mongodb://mongodb:27017/birthdays";
+            var dbn = Environment.GetEnvironmentVariable("MONGO_DBNAME") ?? "birthdays";
+            var collection = new MongoClient(new MongoUrl(url))
+                .GetDatabase(dbn)
                 .GetCollection<BirthdayBot.Domain.Entities.User>("users");
             return await collection.FindAsync(_ => true, cancellationToken: ct);
         }

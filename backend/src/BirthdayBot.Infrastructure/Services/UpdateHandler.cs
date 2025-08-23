@@ -1,4 +1,3 @@
-// path: backend/src/BirthdayBot.Infrastructure/Services/UpdateHandler.cs
 using BirthdayBot.Application.Interfaces;
 using BirthdayBot.Domain.Entities;
 using BirthdayBot.Domain.Enums;
@@ -20,7 +19,7 @@ public class UpdateHandler : IUpdateHandler
     private readonly IBirthdayRepository _birthdays;
     private readonly ILocalizationService _i18n;
     private readonly InMemoryConversationState _state;
-    private readonly DateTimeZoneProvider _tzdb = DateTimeZoneProviders.Tzdb;
+    private readonly IDateTimeZoneProvider _tzdb = DateTimeZoneProviders.Tzdb;
 
     public UpdateHandler(ITelegramBotClient bot, IUserRepository users, IBirthdayRepository birthdays, ILocalizationService i18n, InMemoryConversationState state)
     {
@@ -63,7 +62,6 @@ public class UpdateHandler : IUpdateHandler
             }
             if (text.StartsWith("/remove"))
             {
-                // /remove John
                 var name = text.Replace("/remove", "", StringComparison.OrdinalIgnoreCase).Trim();
                 if (string.IsNullOrWhiteSpace(name))
                 {
@@ -86,7 +84,6 @@ public class UpdateHandler : IUpdateHandler
                 return;
             }
 
-            // Settings free-form updates
             if (text.Contains(':') || text.Contains("ru", StringComparison.OrdinalIgnoreCase) || text.Contains("pl", StringComparison.OrdinalIgnoreCase) ||
                 text.Contains("en", StringComparison.OrdinalIgnoreCase) || text.Contains("auto", StringComparison.OrdinalIgnoreCase) ||
                 text.Contains("formal", StringComparison.OrdinalIgnoreCase) || text.Contains("friendly", StringComparison.OrdinalIgnoreCase))
@@ -121,7 +118,6 @@ public class UpdateHandler : IUpdateHandler
                 }
             }
 
-            // Conversation flow
             var state = _state.Get(user.TelegramUserId);
             switch (state.Step)
             {
@@ -147,7 +143,6 @@ public class UpdateHandler : IUpdateHandler
                         await _bot.SendTextMessageAsync(chatId, "Неизвестная таймзона. Пример: Europe/Warsaw", cancellationToken: ct);
                         return;
                     }
-                    // Store birthday
                     var entity = new Birthday
                     {
                         UserId = user.Id,
@@ -161,7 +156,6 @@ public class UpdateHandler : IUpdateHandler
                     await _bot.SendTextMessageAsync(chatId, _i18n.GetText(user.Lang, "saved"), cancellationToken: ct);
                     break;
                 default:
-                    // unknown text: show help prompt
                     await _bot.SendTextMessageAsync(chatId, _i18n.GetText(user.Lang, "start"), cancellationToken: ct);
                     break;
             }
@@ -170,23 +164,39 @@ public class UpdateHandler : IUpdateHandler
         {
             var cq = update.CallbackQuery!;
             var user = await EnsureUser(cq.From, ct);
-            if (cq.Data != null)
+            if (cq.Data != null && cq.Data.StartsWith("delete:"))
             {
-                if (cq.Data.StartsWith("delete:"))
+                var idStr = cq.Data.Substring("delete:".Length);
+                if (ObjectId.TryParse(idStr, out var bid))
                 {
-                    var idStr = cq.Data.Substring("delete:".Length);
-                    if (ObjectId.TryParse(idStr, out var bid))
-                    {
-                        await _birthdays.DeleteAsync(bid, user.Id, ct);
-                        await _bot.EditMessageTextAsync(user.TelegramUserId, cq.Message!.MessageId, _i18n.GetText(user.Lang, "removed"), cancellationToken: ct);
-                    }
+                    await _birthdays.DeleteAsync(bid, user.Id, ct);
+                    await _bot.EditMessageTextAsync(user.TelegramUserId, cq.Message!.MessageId, _i18n.GetText(user.Lang, "removed"), cancellationToken: ct);
                 }
             }
             await _bot.AnswerCallbackQueryAsync(cq.Id, cancellationToken: ct);
         }
     }
 
-    private async Task HandleList(User user, long chatId, CancellationToken ct)
+    private async Task<BirthdayBot.Domain.Entities.User> EnsureUser(Telegram.Bot.Types.User tgUser, CancellationToken ct)
+    {
+        var existing = await _users.GetByTelegramUserIdAsync(tgUser.Id, ct);
+        if (existing != null) return existing;
+
+        var created = new BirthdayBot.Domain.Entities.User
+        {
+            TelegramUserId = tgUser.Id,
+            Timezone = "Europe/Warsaw",
+            NotifyAtLocalTime = "09:00",
+            Lang = Language.Ru,
+            AutoGenerateGreetings = true,
+            Tone = Tone.Friendly,
+            CreatedAt = DateTime.UtcNow
+        };
+        await _users.CreateAsync(created, ct);
+        return created;
+    }
+
+    private async Task HandleList(BirthdayBot.Domain.Entities.User user, long chatId, CancellationToken ct)
     {
         var list = await _birthdays.ListByUserAsync(user.Id, ct);
         if (list.Count == 0)
@@ -205,7 +215,6 @@ public class UpdateHandler : IUpdateHandler
         }
         var text = string.Join("\n", lines);
 
-        // Build inline keyboard with delete buttons (one row per item)
         var rows = list.Select(b =>
             new[]
             {
@@ -214,24 +223,5 @@ public class UpdateHandler : IUpdateHandler
 
         var keyboard = new InlineKeyboardMarkup(rows);
         await _bot.SendTextMessageAsync(chatId, text, replyMarkup: keyboard, cancellationToken: ct);
-    }
-
-    private async Task<User> EnsureUser(Telegram.Bot.Types.User tgUser, CancellationToken ct)
-    {
-        var existing = await _users.GetByTelegramUserIdAsync(tgUser.Id, ct);
-        if (existing != null) return existing;
-
-        var created = new User
-        {
-            TelegramUserId = tgUser.Id,
-            Timezone = "Europe/Warsaw",
-            NotifyAtLocalTime = "09:00",
-            Lang = Language.Ru,
-            AutoGenerateGreetings = true,
-            Tone = Tone.Friendly,
-            CreatedAt = DateTime.UtcNow
-        };
-        await _users.CreateAsync(created, ct);
-        return created;
     }
 }

@@ -14,6 +14,7 @@
         "outputPath": "C:\\MyProjects\\TelegramBots\\BithdayHelper\\backend\\src\\BirthdayBot.Domain\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
+          "C:\\MyProjects\\TelegramBots\\BithdayHelper\\NuGet.Config",
           "C:\\Users\\igromyko\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
@@ -21,9 +22,7 @@
           "net8.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-          "https://api.nuget.org/v3/index.json": {},
-          "https://idt-416223954868.d.codeartifact.us-east-1.amazonaws.com/nuget/team_coreservices-nuget/v3/index.json": {}
+          "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
           "net8.0": {
@@ -45,6 +44,16 @@
       "frameworks": {
         "net8.0": {
           "targetAlias": "net8.0",
+          "dependencies": {
+            "MongoDB.Bson": {
+              "target": "Package",
+              "version": "[2.25.0, )"
+            },
+            "NodaTime": {
+              "target": "Package",
+              "version": "[3.1.11, )"
+            }
+          },
           "imports": [
             "net461",
             "net462",
