@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("BirthdayBot.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f350a9c3228a7c5716f0301a26869d774ba4b7be")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+01f53f5f12dd51a73531806ed174cfb676205a46")]
 [assembly: System.Reflection.AssemblyProductAttribute("BirthdayBot.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("BirthdayBot.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

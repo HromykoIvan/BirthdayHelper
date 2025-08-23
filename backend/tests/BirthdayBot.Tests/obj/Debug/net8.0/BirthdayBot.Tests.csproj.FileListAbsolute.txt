@@ -134,3 +134,5 @@ C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\obj\Deb
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\obj\Debug\net8.0\ref\BirthdayBot.Tests.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Debug\net8.0\Microsoft.Extensions.Caching.Abstractions.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Debug\net8.0\Microsoft.Extensions.Caching.Memory.dll
+C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Debug\net8.0\GeoTimeZone.dll
+C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\obj\Debug\net8.0\BirthdayBot.Tests.sourcelink.json

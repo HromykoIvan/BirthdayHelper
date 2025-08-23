@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "bZEnko2H6KWi8KTRHUpi3gWlctU0I6xRNGDvBxWHVMxPndGSsFrxASg4+dkzoAaE2HQ+RjuvEAawbHfLXDqQpg==",
+  "dgSpecHash": "Ol5HIOP24/Cue/e7X8pZ2pvi3RbluO1C1yyBiq4FBCdRUOxRUbVAGswGp9E1DK0jHE8x4PDuAylNaBPj3obZAg==",
   "success": true,
   "projectFilePath": "C:\\MyProjects\\TelegramBots\\BithdayHelper\\backend\\tests\\BirthdayBot.Tests\\BirthdayBot.Tests.csproj",
   "expectedPackageFiles": [
@@ -10,6 +10,7 @@
     "C:\\Users\\igromyko\\.nuget\\packages\\cronos\\0.9.0\\cronos.0.9.0.nupkg.sha512",
     "C:\\Users\\igromyko\\.nuget\\packages\\dnsclient\\1.6.1\\dnsclient.1.6.1.nupkg.sha512",
     "C:\\Users\\igromyko\\.nuget\\packages\\fluentassertions\\6.12.0\\fluentassertions.6.12.0.nupkg.sha512",
+    "C:\\Users\\igromyko\\.nuget\\packages\\geotimezone\\2.0.0\\geotimezone.2.0.0.nupkg.sha512",
     "C:\\Users\\igromyko\\.nuget\\packages\\microsoft.codecoverage\\17.8.0\\microsoft.codecoverage.17.8.0.nupkg.sha512",
     "C:\\Users\\igromyko\\.nuget\\packages\\microsoft.extensions.caching.abstractions\\8.0.0\\microsoft.extensions.caching.abstractions.8.0.0.nupkg.sha512",
     "C:\\Users\\igromyko\\.nuget\\packages\\microsoft.extensions.caching.memory\\8.0.0\\microsoft.extensions.caching.memory.8.0.0.nupkg.sha512",

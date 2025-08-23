@@ -2,6 +2,7 @@ using System;
 using System.Text.RegularExpressions;
 using BirthdayBot.Application.Interfaces;
 using BirthdayBot.Application.Models;
+using BirthdayBot.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Telegram.Bot;
 using Telegram.Bot.Types;
@@ -19,7 +20,8 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
 {
     private readonly ITelegramBotClient _bot;
     private readonly IConversationSessionStore _store;
-    private readonly IUpdateHandler _fallbackHandler;
+    private readonly IBirthdayRepository _birthdays;
+    private readonly IUserRepository _users;
     private readonly ILogger<AddBirthdayWizardFlow> _logger;
 
     // Компилированный регекс — меньше аллокаций и быстрее парсинг дат
@@ -52,12 +54,14 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
     public AddBirthdayWizardFlow(
         ITelegramBotClient bot,
         IConversationSessionStore store,
-        IUpdateHandler fallbackHandler,
+        IBirthdayRepository birthdays,
+        IUserRepository users,
         ILogger<AddBirthdayWizardFlow> logger)
     {
         _bot = bot;
         _store = store;
-        _fallbackHandler = fallbackHandler;
+        _birthdays = birthdays;
+        _users = users;
         _logger = logger;
     }
 
@@ -125,20 +129,33 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                         return true;
 
                     case "add:save" when s1.Name is not null && s1.Date is not null:
-                        // Проксируем в существующий командный обработчик — мы не дублируем бизнес-логику (DRY)
-                        var cmd = $"/add_birthday {s1.Name} {s1.Date:dd.MM.yyyy}";
-                        var fake = new Update
+                        // Прямо создаём день рождения
+                        try
                         {
-                            Message = new Message
+                            var user = await _users.GetByTelegramUserIdAsync(s1.UserId, ct);
+                            if (user == null)
                             {
-                                Chat = new Chat { Id = s1.ChatId },
-                                From = new User { Id = s1.UserId },
-                                Text = cmd,
-                                Date = DateTime.UtcNow
+                                await SafeEditAsync(update, chatId, "❌ Пользователь не найден", ct);
+                                return true;
                             }
-                        };
-                        await _fallbackHandler.HandleUpdateAsync(fake, ct);
-                        _store.Remove(chatId);
+
+                            var birthday = new Birthday
+                            {
+                                Name = s1.Name,
+                                Date = s1.Date!.Value,
+                                UserId = s1.UserId,
+                                TimeZoneId = user.Timezone ?? "Europe/Warsaw"
+                            };
+
+                            await _birthdays.CreateAsync(birthday, ct);
+                            _store.Remove(chatId);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to save birthday for user {UserId}", s1.UserId);
+                            await SafeEditAsync(update, chatId, "❌ Ошибка сохранения", ct);
+                            return true;
+                        }
 
                         await SafeEditAsync(update, chatId,
                             $"✅ Сохранено: *{s1.Name}*, {s1.Date:dd.MM.yyyy}",

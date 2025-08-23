@@ -11,6 +11,7 @@
           "BirthdayBot.Application": "1.0.0",
           "BirthdayBot.Domain": "1.0.0",
           "Cronos": "0.9.0",
+          "GeoTimeZone": "2.0.0",
           "Microsoft.Extensions.Caching.Memory": "8.0.0",
           "Microsoft.Extensions.Hosting.Abstractions": "8.0.0",
           "Microsoft.Extensions.Logging.Abstractions": "8.0.0",
@@ -58,6 +59,23 @@
           "lib/net5.0/DnsClient.dll": {
             "assemblyVersion": "1.6.1.0",
             "fileVersion": "1.6.1.0"
+          }
+        }
+      },
+      "GeoTimeZone/2.0.0": {
+        "dependencies": {
+          "System.Collections": "4.0.10",
+          "System.IO": "4.0.0",
+          "System.Linq": "4.0.0",
+          "System.Reflection": "4.0.0",
+          "System.Runtime": "4.0.20",
+          "System.Runtime.Extensions": "4.0.10",
+          "System.Threading": "4.0.0"
+        },
+        "runtime": {
+          "lib/netstandard1.0/GeoTimeZone.dll": {
+            "assemblyVersion": "2.0.0.0",
+            "fileVersion": "2.0.0.0"
           }
         }
       },
@@ -289,9 +307,15 @@
         }
       },
       "System.Buffers/4.5.1": {},
+      "System.Collections/4.0.10": {},
       "System.Diagnostics.DiagnosticSource/8.0.0": {},
+      "System.IO/4.0.0": {},
+      "System.Linq/4.0.0": {},
       "System.Memory/4.5.5": {},
+      "System.Reflection/4.0.0": {},
+      "System.Runtime/4.0.20": {},
       "System.Runtime.CompilerServices.Unsafe/5.0.0": {},
+      "System.Runtime.Extensions/4.0.10": {},
       "System.Security.AccessControl/5.0.0": {
         "dependencies": {
           "Microsoft.NETCore.Platforms": "5.0.0",
@@ -299,6 +323,7 @@
         }
       },
       "System.Security.Principal.Windows/5.0.0": {},
+      "System.Threading/4.0.0": {},
       "Telegram.Bot/19.0.0": {
         "dependencies": {
           "Newtonsoft.Json": "13.0.1"
@@ -372,6 +397,13 @@
       "sha512": "sha512-4H/f2uYJOZ+YObZjpY9ABrKZI+JNw3uizp6oMzTXwDw6F+2qIPhpRl/1t68O/6e98+vqNiYGu+lswmwdYUy3gg==",
       "path": "dnsclient/1.6.1",
       "hashPath": "dnsclient.1.6.1.nupkg.sha512"
+    },
+    "GeoTimeZone/2.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-jL2FqcoWwWxJ2ePlOrccEV1ykJZltNM0xMk8obFykRiNQxgMOz3Bii1vJh1bPCXw4p4z6JizUAY4hVoCEDe/0w==",
+      "path": "geotimezone/2.0.0",
+      "hashPath": "geotimezone.2.0.0.nupkg.sha512"
     },
     "Microsoft.Extensions.Caching.Abstractions/8.0.0": {
       "type": "package",
@@ -520,12 +552,33 @@
       "path": "system.buffers/4.5.1",
       "hashPath": "system.buffers.4.5.1.nupkg.sha512"
     },
+    "System.Collections/4.0.10": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-ux6ilcZZjV/Gp7JEZpe+2V1eTueq6NuoGRM3eZCFuPM25hLVVgCRuea6STW8hvqreIOE59irJk5/ovpA5xQipw==",
+      "path": "system.collections/4.0.10",
+      "hashPath": "system.collections.4.0.10.nupkg.sha512"
+    },
     "System.Diagnostics.DiagnosticSource/8.0.0": {
       "type": "package",
       "serviceable": true,
       "sha512": "sha512-c9xLpVz6PL9lp/djOWtk5KPDZq3cSYpmXoJQY524EOtuFl5z9ZtsotpsyrDW40U1DRnQSYvcPKEUV0X//u6gkQ==",
       "path": "system.diagnostics.diagnosticsource/8.0.0",
       "hashPath": "system.diagnostics.diagnosticsource.8.0.0.nupkg.sha512"
+    },
+    "System.IO/4.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-MoCHQ0u5n0OMwUS8OX4Gl48qKiQziSW5cXvt82d+MmAcsLq9OL90+ihnu/aJ1h6OOYcBswrZAEuApfZha9w2lg==",
+      "path": "system.io/4.0.0",
+      "hashPath": "system.io.4.0.0.nupkg.sha512"
+    },
+    "System.Linq/4.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-r6Hlc+ytE6m/9UBr+nNRRdoJEWjoeQiT3L3lXYFDHoXk3VYsRBCDNXrawcexw7KPLaH0zamQLiAb6avhZ50cGg==",
+      "path": "system.linq/4.0.0",
+      "hashPath": "system.linq.4.0.0.nupkg.sha512"
     },
     "System.Memory/4.5.5": {
       "type": "package",
@@ -534,12 +587,33 @@
       "path": "system.memory/4.5.5",
       "hashPath": "system.memory.4.5.5.nupkg.sha512"
     },
+    "System.Reflection/4.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-g96Rn8XuG7y4VfxPj/jnXroRJdQ8L3iN3k3zqsuzk4k3Nq4KMXARYiIO4BLW4GwX06uQpuYwRMcAC/aF117knQ==",
+      "path": "system.reflection/4.0.0",
+      "hashPath": "system.reflection.4.0.0.nupkg.sha512"
+    },
+    "System.Runtime/4.0.20": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-X7N/9Bz7jVPorqdVFO86ns1sX6MlQM+WTxELtx+Z4VG45x9+LKmWH0GRqjgKprUnVuwmfB9EJ9DQng14Z7/zwg==",
+      "path": "system.runtime/4.0.20",
+      "hashPath": "system.runtime.4.0.20.nupkg.sha512"
+    },
     "System.Runtime.CompilerServices.Unsafe/5.0.0": {
       "type": "package",
       "serviceable": true,
       "sha512": "sha512-ZD9TMpsmYJLrxbbmdvhwt9YEgG5WntEnZ/d1eH8JBX9LBp+Ju8BSBhUGbZMNVHHomWo2KVImJhTDl2hIgw/6MA==",
       "path": "system.runtime.compilerservices.unsafe/5.0.0",
       "hashPath": "system.runtime.compilerservices.unsafe.5.0.0.nupkg.sha512"
+    },
+    "System.Runtime.Extensions/4.0.10": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-5dsEwf3Iml7d5OZeT20iyOjT+r+okWpN7xI2v+R4cgd3WSj4DeRPTvPFjDpacbVW4skCAZ8B9hxXJYgkCFKJ1A==",
+      "path": "system.runtime.extensions/4.0.10",
+      "hashPath": "system.runtime.extensions.4.0.10.nupkg.sha512"
     },
     "System.Security.AccessControl/5.0.0": {
       "type": "package",
@@ -554,6 +628,13 @@
       "sha512": "sha512-t0MGLukB5WAVU9bO3MGzvlGnyJPgUlcwerXn1kzBRjwLKixT96XV0Uza41W49gVd8zEMFu9vQEFlv0IOrytICA==",
       "path": "system.security.principal.windows/5.0.0",
       "hashPath": "system.security.principal.windows.5.0.0.nupkg.sha512"
+    },
+    "System.Threading/4.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-H6O/9gUrjPDNYanh/7OFGAZHjVXvEuITD0RcnjfvIV04HOGrOPqUBU0kmz9RIX/7YGgCQn1o1S2DX6Cuv8kVGQ==",
+      "path": "system.threading/4.0.0",
+      "hashPath": "system.threading.4.0.0.nupkg.sha512"
     },
     "Telegram.Bot/19.0.0": {
       "type": "package",

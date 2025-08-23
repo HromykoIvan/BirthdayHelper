@@ -13,3 +13,4 @@ C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Application\obj
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Application\obj\Debug\net8.0\refint\BirthdayBot.Application.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Application\obj\Debug\net8.0\BirthdayBot.Application.pdb
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Application\obj\Debug\net8.0\ref\BirthdayBot.Application.dll
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Application\obj\Debug\net8.0\BirthdayBot.Application.sourcelink.json

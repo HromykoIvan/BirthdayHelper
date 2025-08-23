@@ -10,3 +10,4 @@ C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Domain\obj\Debu
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Domain\obj\Debug\net8.0\refint\BirthdayBot.Domain.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Domain\obj\Debug\net8.0\BirthdayBot.Domain.pdb
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Domain\obj\Debug\net8.0\ref\BirthdayBot.Domain.dll
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Domain\obj\Debug\net8.0\BirthdayBot.Domain.sourcelink.json

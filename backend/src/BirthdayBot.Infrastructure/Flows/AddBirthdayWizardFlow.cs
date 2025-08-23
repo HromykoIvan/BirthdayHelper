@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace BirthdayBot.Application.Flows;
 
@@ -14,20 +15,20 @@ public sealed class AddBirthdayWizardFlow
     private readonly ITelegramBotClient _bot;
     private readonly IAddBirthdayWizardSessionStore _store;
     private readonly ITimeZoneResolver _tzResolver;
-    private readonly IUserSettingsService _settings;       // ваш сервис настроек пользователя
-    private readonly IBirthdayService _birthdays;          // ваш доменный сервис для CRUD
+    private readonly IUserRepository _users;       // using existing user repository
+    private readonly IBirthdayRepository _birthdays;          // using existing birthday repository
     private readonly ILogger<AddBirthdayWizardFlow> _log;
 
     public AddBirthdayWizardFlow(
         ITelegramBotClient bot,
         IAddBirthdayWizardSessionStore store,
         ITimeZoneResolver tzResolver,
-        IUserSettingsService settings,
-        IBirthdayService birthdays,
+        IUserRepository users,
+        IBirthdayRepository birthdays,
         ILogger<AddBirthdayWizardFlow> log)
     {
         _bot = bot; _store = store; _tzResolver = tzResolver;
-        _settings = settings; _birthdays = birthdays; _log = log;
+        _users = users; _birthdays = birthdays; _log = log;
     }
 
     public async Task<bool> TryHandleAsync(Update u, CancellationToken ct)
@@ -46,7 +47,7 @@ public sealed class AddBirthdayWizardFlow
             await _bot.SendTextMessageAsync(msg.Chat, 
                 "<b>🎉 Добавляем ДР</b>\n① <b>Имя</b> → ② Дата → ③ Часовой пояс → ④ Отношение → ⑤ Подтверждение\n\n" +
                 "Отправьте имя именинника (например: <code>Иван</code>).",
-                ParseMode.Html, cancellationToken: ct);
+                parseMode: ParseMode.Html, cancellationToken: ct);
             return true;
         }
 
@@ -76,7 +77,7 @@ public sealed class AddBirthdayWizardFlow
             {
                 try
                 {
-                    await _birthdays.AddAsync(s.UserId, new()
+                    await _birthdays.CreateAsync(new()
                     {
                         Name = s.Name!,
                         Date = s.Date!.Value,
@@ -117,7 +118,7 @@ public sealed class AddBirthdayWizardFlow
                 if (string.IsNullOrWhiteSpace(msg.Text))
                 {
                     await _bot.SendTextMessageAsync(msg.Chat, "Имя не распознано. Введите, например: <code>Иван</code>.",
-                        ParseMode.Html, cancellationToken: ct);
+                        parseMode: ParseMode.Html, cancellationToken: ct);
                     return true;
                 }
 
@@ -126,7 +127,7 @@ public sealed class AddBirthdayWizardFlow
 
                 await _bot.SendTextMessageAsync(msg.Chat,
                     "<b>🗓 Дата</b>\nФормат: <code>ДД.ММ</code> или <code>ГГГГ-ММ-ДД</code>.\nМожно нажать «Сегодня» / «Завтра».",
-                    ParseMode.Html, replyMarkup: Keyboards.DateKb, cancellationToken: ct);
+                    parseMode: ParseMode.Html, replyMarkup: Keyboards.DateKb, cancellationToken: ct);
                 return true;
             }
 
@@ -148,7 +149,7 @@ public sealed class AddBirthdayWizardFlow
                 {
                     await _bot.SendTextMessageAsync(msg.Chat,
                         "Не понял дату. Формат: <code>ДД.ММ</code> или <code>ГГГГ-ММ-ДД</code>. Либо «Сегодня/Завтра».",
-                        ParseMode.Html, replyMarkup: Keyboards.DateKb, cancellationToken: ct);
+                        parseMode: ParseMode.Html, replyMarkup: Keyboards.DateKb, cancellationToken: ct);
                     return true;
                 }
 
@@ -158,7 +159,7 @@ public sealed class AddBirthdayWizardFlow
                 await _bot.SendTextMessageAsync(msg.Chat,
                     "<b>🌍 Часовой пояс</b>\nПришлите геопозицию, введите город или IANA (например: <code>Europe/Warsaw</code>),\n" +
                     "либо нажмите «➡️ Пропустить» — возьмём из ваших настроек.",
-                    ParseMode.Html, replyMarkup: Keyboards.TimeZoneKb, cancellationToken: ct);
+                    parseMode: ParseMode.Html, replyMarkup: Keyboards.TimeZoneKb, cancellationToken: ct);
                 return true;
             }
 
@@ -173,7 +174,7 @@ public sealed class AddBirthdayWizardFlow
                     {
                         await _bot.SendTextMessageAsync(msg.Chat,
                             "Не вышло определить пояс. Введите город (например: <code>Warsaw</code>) или нажмите «➡️ Пропустить».",
-                            ParseMode.Html, replyMarkup: Keyboards.TimeZoneKb, cancellationToken: ct);
+                            parseMode: ParseMode.Html, replyMarkup: Keyboards.TimeZoneKb, cancellationToken: ct);
                         return true;
                     }
                     s.TimeZoneId = tz; goto AskRelation;
@@ -184,7 +185,7 @@ public sealed class AddBirthdayWizardFlow
                 {
                     s.WaitingCity = true; _store.Upsert(s);
                     await _bot.SendTextMessageAsync(msg.Chat, "Введите город, например: <code>Warsaw</code>.",
-                        ParseMode.Html, cancellationToken: ct);
+                        parseMode: ParseMode.Html, cancellationToken: ct);
                     return true;
                 }
 
@@ -206,7 +207,8 @@ public sealed class AddBirthdayWizardFlow
                 // Пропустить
                 if (msg.Text == "➡️ Пропустить")
                 {
-                    s.TimeZoneId = await _settings.GetUserTimeZoneAsync(s.UserId, ct) ?? "Europe/Warsaw";
+                    var user = await _users.GetByTelegramUserIdAsync(s.UserId, ct);
+                    s.TimeZoneId = user?.Timezone ?? "Europe/Warsaw";
                     goto AskRelation;
                 }
 
@@ -225,7 +227,7 @@ public sealed class AddBirthdayWizardFlow
                 s.Step = AddWizardStep.Relation; _store.Upsert(s);
                 await _bot.SendTextMessageAsync(msg.Chat,
                     "<b>👥 Отношение</b>\nКто это для вас? Выберите кнопку или введите свой вариант.",
-                    ParseMode.Html, replyMarkup: Keyboards.RelationKb, cancellationToken: ct);
+                    parseMode: ParseMode.Html, replyMarkup: Keyboards.RelationKb, cancellationToken: ct);
                 return true;
             }
 
@@ -242,7 +244,7 @@ public sealed class AddBirthdayWizardFlow
                     $"Пояс: <code>{s.TimeZoneId}</code>\n" +
                     $"Отношение: <b>{Formatting.Html(s.Relation ?? "—")}</b>\nСохранить?";
 
-                await _bot.SendTextMessageAsync(msg.Chat, text, ParseMode.Html,
+                await _bot.SendTextMessageAsync(msg.Chat, text, parseMode: ParseMode.Html,
                     replyMarkup: Keyboards.ConfirmKb, cancellationToken: ct);
                 return true;
             }

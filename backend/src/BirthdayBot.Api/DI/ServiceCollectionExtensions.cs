@@ -10,7 +10,9 @@ using OpenTelemetry.Metrics;
 using Telegram.Bot;
 using BirthdayBot.Application.Services;
 using BirthdayBot.Infrastructure.Sessions;
+using BirthdayBot.Infrastructure.Geo;
 using Microsoft.Extensions.Caching.Memory;
+using BirthdayBot.Infrastructure.Flows;
 
 namespace BirthdayBot.Api.DI;
 
@@ -33,7 +35,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ILocalizationService, LocalizationService>();
 
         services.AddSingleton<InMemoryConversationState>();
-        services.AddSingleton<IUpdateHandler, UpdateHandler>();
+        services.AddScoped<IUpdateHandler, UpdateHandler>();
         services.AddMemoryCache();
         services.AddSingleton<IConversationSessionStore, InMemoryConversationSessionStore>();
         services.AddScoped<IWizardFlow, AddBirthdayWizardFlow>();
@@ -46,8 +48,8 @@ public static class ServiceCollectionExtensions
         // Upcoming
         services.AddSingleton<IUpcomingService, UpcomingService>();
 
-        // Flow (если вы инжектите напрямую)
-        services.AddTransient<AddBirthdayWizardFlow>();
+        // Flow - регистрируем как Scoped для UpdateHandler
+        services.AddScoped<AddBirthdayWizardFlow>();
         services.AddSingleton<ITelegramBotClient>(sp =>
         {
             var bot = sp.GetRequiredService<IOptions<BotOptions>>().Value;

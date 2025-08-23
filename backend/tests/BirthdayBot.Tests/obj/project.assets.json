@@ -82,6 +82,24 @@
           }
         }
       },
+      "GeoTimeZone/2.0.0": {
+        "type": "package",
+        "dependencies": {
+          "System.Collections": "4.0.10",
+          "System.IO": "4.0.0",
+          "System.Linq": "4.0.0",
+          "System.Reflection": "4.0.0",
+          "System.Runtime": "4.0.20",
+          "System.Runtime.Extensions": "4.0.10",
+          "System.Threading": "4.0.0"
+        },
+        "compile": {
+          "lib/netstandard1.0/GeoTimeZone.dll": {}
+        },
+        "runtime": {
+          "lib/netstandard1.0/GeoTimeZone.dll": {}
+        }
+      },
       "Microsoft.CodeCoverage/17.8.0": {
         "type": "package",
         "compile": {
@@ -2281,6 +2299,7 @@
           "BirthdayBot.Application": "1.0.0",
           "BirthdayBot.Domain": "1.0.0",
           "Cronos": "0.9.0",
+          "GeoTimeZone": "2.0.0",
           "Microsoft.Extensions.Caching.Memory": "8.0.0",
           "Microsoft.Extensions.Hosting.Abstractions": "8.0.0",
           "Microsoft.Extensions.Logging.Abstractions": "8.0.0",
@@ -2480,6 +2499,19 @@
         "lib/netstandard2.1/FluentAssertions.dll",
         "lib/netstandard2.1/FluentAssertions.pdb",
         "lib/netstandard2.1/FluentAssertions.xml"
+      ]
+    },
+    "GeoTimeZone/2.0.0": {
+      "sha512": "jL2FqcoWwWxJ2ePlOrccEV1ykJZltNM0xMk8obFykRiNQxgMOz3Bii1vJh1bPCXw4p4z6JizUAY4hVoCEDe/0w==",
+      "type": "package",
+      "path": "geotimezone/2.0.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "geotimezone.2.0.0.nupkg.sha512",
+        "geotimezone.nuspec",
+        "lib/netstandard1.0/GeoTimeZone.dll",
+        "lib/portable40-net40+sl5+win8+wp8/GeoTimeZone.dll"
       ]
     },
     "Microsoft.CodeCoverage/17.8.0": {

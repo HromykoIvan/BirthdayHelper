@@ -96,7 +96,7 @@ public class ReminderHostedService : BackgroundService, IReminderService
                 var list = await _birthdays.ListByUserAsync(user.Id, ct);
                 foreach (var b in list)
                 {
-                    var (next, age) = BirthdayBot.Domain.Utils.DateHelpers.NextBirthday(todayLocal, b.DateOfBirth);
+                    var (next, age) = BirthdayBot.Domain.Utils.DateHelpers.NextBirthday(todayLocal, b.Date);
                     var isToday = next == todayLocal;
                     var isTomorrow = next == todayLocal.PlusDays(1);
 
@@ -116,7 +116,7 @@ public class ReminderHostedService : BackgroundService, IReminderService
                     await _logs.CreateAsync(new DeliveryLog
                     {
                         UserId = user.Id,
-                        BirthdayId = b.Id,
+                        BirthdayId = ObjectId.Parse(b.Id),
                         WhenUtc = DateTime.UtcNow,
                         MessageId = sent.MessageId.ToString(),
                         Status = "Sent"
