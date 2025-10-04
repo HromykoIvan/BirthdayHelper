@@ -10,9 +10,9 @@ C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\BirthdayBot.Infrastructure.AssemblyInfoInputs.cache
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\BirthdayBot.Infrastructure.AssemblyInfo.cs
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\BirthdayBot.Infrastructure.csproj.CoreCompileInputs.cache
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\BirthdayBot.Infrastructure.sourcelink.json
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\Birthday.E5B2738C.Up2Date
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\BirthdayBot.Infrastructure.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\refint\BirthdayBot.Infrastructure.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\BirthdayBot.Infrastructure.pdb
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\ref\BirthdayBot.Infrastructure.dll
-C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Infrastructure\obj\Debug\net8.0\BirthdayBot.Infrastructure.sourcelink.json

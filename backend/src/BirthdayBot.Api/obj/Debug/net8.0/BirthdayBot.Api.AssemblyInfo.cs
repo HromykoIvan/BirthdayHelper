@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("BirthdayBot.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+01f53f5f12dd51a73531806ed174cfb676205a46")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f8bd6e8dc5550932afdeac63dbbafcec259bdd44")]
 [assembly: System.Reflection.AssemblyProductAttribute("BirthdayBot.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("BirthdayBot.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

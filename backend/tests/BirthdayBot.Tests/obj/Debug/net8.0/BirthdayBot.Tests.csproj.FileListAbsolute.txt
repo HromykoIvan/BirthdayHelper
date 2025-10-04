@@ -13,7 +13,10 @@ C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Deb
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Debug\net8.0\Cronos.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Debug\net8.0\DnsClient.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Debug\net8.0\FluentAssertions.dll
+C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Debug\net8.0\GeoTimeZone.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Debug\net8.0\Microsoft.VisualStudio.CodeCoverage.Shim.dll
+C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Debug\net8.0\Microsoft.Extensions.Caching.Abstractions.dll
+C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Debug\net8.0\Microsoft.Extensions.Caching.Memory.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Debug\net8.0\Microsoft.Extensions.Configuration.Abstractions.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Debug\net8.0\Microsoft.Extensions.DependencyInjection.Abstractions.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Debug\net8.0\Microsoft.Extensions.Diagnostics.Abstractions.dll
@@ -126,13 +129,10 @@ C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\obj\Deb
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\obj\Debug\net8.0\BirthdayBot.Tests.AssemblyInfoInputs.cache
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\obj\Debug\net8.0\BirthdayBot.Tests.AssemblyInfo.cs
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\obj\Debug\net8.0\BirthdayBot.Tests.csproj.CoreCompileInputs.cache
+C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\obj\Debug\net8.0\BirthdayBot.Tests.sourcelink.json
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\obj\Debug\net8.0\Birthday.0E7753BA.Up2Date
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\obj\Debug\net8.0\BirthdayBot.Tests.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\obj\Debug\net8.0\refint\BirthdayBot.Tests.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\obj\Debug\net8.0\BirthdayBot.Tests.pdb
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\obj\Debug\net8.0\BirthdayBot.Tests.genruntimeconfig.cache
 C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\obj\Debug\net8.0\ref\BirthdayBot.Tests.dll
-C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Debug\net8.0\Microsoft.Extensions.Caching.Abstractions.dll
-C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Debug\net8.0\Microsoft.Extensions.Caching.Memory.dll
-C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\bin\Debug\net8.0\GeoTimeZone.dll
-C:\MyProjects\TelegramBots\BithdayHelper\backend\tests\BirthdayBot.Tests\obj\Debug\net8.0\BirthdayBot.Tests.sourcelink.json

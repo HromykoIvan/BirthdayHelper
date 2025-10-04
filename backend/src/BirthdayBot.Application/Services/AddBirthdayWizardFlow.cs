@@ -143,7 +143,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                             {
                                 Name = s1.Name,
                                 Date = s1.Date!.Value,
-                                UserId = s1.UserId,
+                                UserId = user.Id, // Используем ObjectId из базы данных
                                 TimeZoneId = user.Timezone ?? "Europe/Warsaw"
                             };
 

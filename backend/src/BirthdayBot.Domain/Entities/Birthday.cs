@@ -1,9 +1,16 @@
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
+
 namespace BirthdayBot.Domain.Entities;
 
 public sealed class Birthday
 {
-    public string Id { get; set; } = default!;
-    public long UserId { get; set; }        // владелец
+    [BsonId]
+    public ObjectId Id { get; set; }
+    
+    [BsonRepresentation(BsonType.ObjectId)]
+    public ObjectId UserId { get; set; }        // владелец
+    
     public string Name { get; set; } = default!;
     public DateOnly Date { get; set; }
 

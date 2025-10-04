@@ -116,7 +116,7 @@ public class ReminderHostedService : BackgroundService, IReminderService
                     await _logs.CreateAsync(new DeliveryLog
                     {
                         UserId = user.Id,
-                        BirthdayId = ObjectId.Parse(b.Id),
+                        BirthdayId = b.Id, // Теперь b.Id уже ObjectId
                         WhenUtc = DateTime.UtcNow,
                         MessageId = sent.MessageId.ToString(),
                         Status = "Sent"

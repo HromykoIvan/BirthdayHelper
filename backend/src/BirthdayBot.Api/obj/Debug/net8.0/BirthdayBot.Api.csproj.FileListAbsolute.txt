@@ -10,6 +10,7 @@ C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\bin\Debug\n
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\bin\Debug\net8.0\AWSSDK.SecurityToken.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\bin\Debug\net8.0\Cronos.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\bin\Debug\net8.0\DnsClient.dll
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\bin\Debug\net8.0\GeoTimeZone.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\bin\Debug\net8.0\Microsoft.Extensions.Configuration.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\bin\Debug\net8.0\Microsoft.Extensions.Configuration.Abstractions.dll
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\bin\Debug\net8.0\Microsoft.Extensions.Configuration.Binder.dll
@@ -57,6 +58,7 @@ C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\obj\Debug\n
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\obj\Debug\net8.0\BirthdayBot.Api.AssemblyInfo.cs
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\obj\Debug\net8.0\BirthdayBot.Api.csproj.CoreCompileInputs.cache
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\obj\Debug\net8.0\BirthdayBot.Api.MvcApplicationPartsAssemblyInfo.cache
+C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\obj\Debug\net8.0\BirthdayBot.Api.sourcelink.json
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\obj\Debug\net8.0\staticwebassets.build.json
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\obj\Debug\net8.0\staticwebassets.development.json
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\obj\Debug\net8.0\staticwebassets\msbuild.BirthdayBot.Api.Microsoft.AspNetCore.StaticWebAssets.props
@@ -71,5 +73,3 @@ C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\obj\Debug\n
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\obj\Debug\net8.0\BirthdayBot.Api.pdb
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\obj\Debug\net8.0\BirthdayBot.Api.genruntimeconfig.cache
 C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\obj\Debug\net8.0\ref\BirthdayBot.Api.dll
-C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\obj\Debug\net8.0\BirthdayBot.Api.sourcelink.json
-C:\MyProjects\TelegramBots\BithdayHelper\backend\src\BirthdayBot.Api\bin\Debug\net8.0\GeoTimeZone.dll

@@ -45,4 +45,20 @@ public static class Keyboards
                 InlineKeyboardButton.WithCallbackData("❌ Отмена",   "add:cancel")
             }
         });
+
+    public static InlineKeyboardMarkup AddUpcomingFilter()
+        => new(new[]
+        {
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("📅 Сегодня", "up:today"),
+                InlineKeyboardButton.WithCallbackData("➡️ Завтра", "up:tomorrow"),
+            },
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("🗓 7 дней", "up:7"),
+                InlineKeyboardButton.WithCallbackData("📆 Этот месяц", "up:this"),
+                InlineKeyboardButton.WithCallbackData("📆 След. месяц", "up:next"),
+            }
+        });
 }

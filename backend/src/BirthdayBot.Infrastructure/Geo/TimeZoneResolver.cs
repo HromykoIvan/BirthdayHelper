@@ -50,5 +50,8 @@ public sealed class TimeZoneResolver : ITimeZoneResolver
         }
     }
 
+    public Task<string?> ResolveIanaByCityAsync(string city, CancellationToken ct)
+        => Task.FromResult<string?>(null);
+
     private sealed record NominatimItem(string lat, string lon);
 }

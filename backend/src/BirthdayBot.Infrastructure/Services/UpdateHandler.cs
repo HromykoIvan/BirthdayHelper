@@ -150,7 +150,7 @@ public sealed class UpdateHandler : IUpdateHandler
                 return;
             }
 
-            await _birthdays.DeleteAsync(ObjectId.Parse(b.Id), user.Id, ct);
+            await _birthdays.DeleteAsync(b.Id, user.Id, ct);
             await _bot.SendTextMessageAsync(chatId, _i18n.GetText(user.Lang, "removed"), cancellationToken: ct);
             return;
         }
