@@ -1,4 +1,4 @@
-.PHONY: build test run docker-build docker-push helm-install helm-upgrade helm-uninstall kube-ctx
+.PHONY: build test run docker-build docker-push helm-install helm-upgrade helm-uninstall kube-helpers cdk-help cdk-install cdk-deploy cdk-destroy
 
 build:
 \tdotnet build BirthdayBot.sln

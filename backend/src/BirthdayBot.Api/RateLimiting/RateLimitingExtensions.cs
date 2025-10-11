@@ -1,4 +1,3 @@
-// path: backend/src/BirthdayBot.Api/RateLimiting/RateLimitingExtensions.cs
 using System.Threading.RateLimiting;
 
 namespace BirthdayBot.Api.RateLimiting;
