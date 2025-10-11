@@ -1,7 +1,7 @@
 # BirthdayBot — Telegram напоминания о днях рождения
 
 ## Кратко
-Рабочий шаблон на .NET 8 с Clean Architecture, MongoDB, Telegram webhook (Minimal API), фоновым сервисом (cron каждую минуту), i18n генератором поздравлений (RU/PL/EN), Docker/Compose, Kubernetes + Helm, GitHub Actions CI/CD в AWS ECR/EKS, health-checks, Prometheus метрики и rate-limiting.
+Рабочий шаблон на .NET 8 с Clean Architecture, MongoDB, Telegram webhook (Minimal API), фоновым сервисом (cron каждую минуту), i18n генератором поздравлений (RU/PL/EN), Docker/Compose, AWS CDK для деплоя на EC2, GitHub Actions CI/CD с OIDC, health-checks, Prometheus метрики и rate-limiting.
 
 ---
 
@@ -30,25 +30,30 @@
     /settings — отправь, например:
     09:30 или Europe/Warsaw или ru/pl/en или auto on/auto off или formal/friendly.
 
-### Шаг 3. Готовим AWS
-    Минимальные terraform-ish заметки (всё можно и eksctl/консолью):
-        ECR: aws ecr create-repository --repository-name birthday-bot
-        EKS: кластер с managed node group + AWS Load Balancer Controller + NGINX Ingress Controller.
-        IRSA для GitHub OIDC роли (или используй KUBE_CONFIG_B64):
-        Создай IAM роль и доверь провайдеру GitHub (aws-actions/configure-aws-credentials), выдай ecr:* и eks:Describe* + доступ к kubectl через aws eks update-kubeconfig.
-
-### Шаг 4. Helm-деплой в EKS
-    Заполни секреты в GitHub (см. ниже).
-    Запусти пайплайн — при push в main произойдёт сборка образа в ECR и helm upgrade --install.
-    После деплоя:
-        kubectl -n birthday-bot get ingress
-    Возьми HOST и установи Telegram webhook:
-        export TELEGRAM_BOT_TOKEN=...    # твой токен
-        export TELEGRAM_WEBHOOK_SECRET=REPLACE_ME_WEBHOOK_SECRET
-        export HOST=birthdays.example.com
-        curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
-        -H "Content-Type: application/json" \
-        -d "{\"url\":\"https://${HOST}/telegram/webhook\",\"secret_token\":\"${TELEGRAM_WEBHOOK_SECRET}\"}"
+### Шаг 3. AWS CDK деплой
+    Используется AWS CDK для автоматического развертывания на EC2 с Caddy reverse proxy.
+    
+    **Быстрый старт:**
+    1. Настройте AWS OIDC (см. `deploy/cdk/SETUP.md`)
+    2. Создайте GitHub Repository Variables
+    3. Создайте SSM параметры с секретами
+    4. Сделайте push в ветку `master` — автоматический деплой
+    
+    **Ручной деплой:**
+    ```bash
+    cd deploy/cdk
+    npm install
+    export DOMAIN_NAME="bot.example.com"
+    export CDK_DEFAULT_ACCOUNT="123456789012"
+    export CDK_DEFAULT_REGION="us-east-1"
+    npm run deploy
+    ```
+    
+    **Что создается:**
+    - EC2 t4g.micro (ARM64) с Amazon Linux 2023
+    - Docker контейнер с Birthday Bot
+    - Caddy с автоматическим HTTPS
+    - IAM роли для ECR и SSM доступа
 
     Переменные окружения (API)
     | Variable                  | Description                             | Example                                            |
@@ -59,15 +64,12 @@
     | `TELEGRAM_WEBHOOK_SECRET` | секрет для валидации заголовка Telegram | `REPLACE_ME_WEBHOOK_SECRET`                        |
     | `ASPNETCORE_URLS`         | адреса Kestrel                          | `http://0.0.0.0:8080`                              |
 
-   GitHub Secrets 
+   GitHub Repository Variables (для CDK деплоя)
     - AWS_ACCOUNT_ID — 123456789012
-    - AWS_REGION — eu-central-1
-    - ECR_REPO — birthday-bot
-    - AWS_ROLE_TO_ASSUME — ARN роли OIDC для GitHub (альтернатива — KUBE_CONFIG_B64)
-    - KUBE_CONFIG_B64 — base64 kubeconfig (если не используешь OIDC)
-    - DOMAIN_NAME — birthdays.example.com
-    - STORAGE_CLASS — gp3
-    - (опционально) TELEGRAM_BOT_TOKEN — если хочешь прокидывать секрет в K8s прямо из Actions (в моём чарте уже есть Secret из base64 примеров — меняй в values.yaml).
+    - AWS_REGION — us-east-1
+    - AWS_ROLE_TO_ASSUME — ARN роли OIDC для GitHub
+    - DOMAIN_NAME — bot.example.com
+    - ECR_REPO — birthday-helper
 
     Mongo индексы
         Индексы создаются автоматически при старте:
@@ -82,15 +84,23 @@
         NetworkPolicy: разрешает egress к DNS, Mongo и TCP/443 в интернет (для Telegram). У Telegram плавающие IP — точное ограничение по IP невозможно без egress-gateway
 
     Частые проблемы
-        Webhook 401 — не совпадает X-Telegram-Bot-Api-Secret-Token. Проверь секрет и что он совпадает с тем, что задавал в setWebhook.
-        Timeout 502/504 — проверь NGINX Ingress аннотации, readiness/liveness. Убедись, что /health/ready отдаёт 200.
+        Webhook 401 — не совпадает X-Telegram-Bot-Api-Secret-Token. Проверь SSM параметр и что он совпадает с тем, что задавал в setWebhook.
+        CDK Bootstrap ошибки — убедись, что OIDC роль имеет права на S3 и CloudFormation.
+        EC2 недоступен — проверь Security Group, убедись что порты 80/443 открыты.
+        Caddy не запускается — проверь DNS настройки домена.
         TZ — используй точные ID из tzdb (например, Europe/Warsaw). В /settings можно прислать любой валидный ID.
         Состояние диалогов — в MVP хранится в памяти. Для продакшен-масштабирования добавь Redis (stateful).
     
-    Как поменять значения Secret (base64)
-        В манифесте deploy/k8s/secret-telegram.yaml уже валидные base64. Чтобы заменить:
-        echo -n 'YOUR_REAL_TOKEN' | base64
-        Подставь значение в поле TELEGRAM_BOT_TOKEN. То же для MONGODB_URI и TELEGRAM_WEBHOOK_SECRET.
+    SSM Parameters
+        Создайте параметры в AWS Systems Manager:
+        ```bash
+        aws ssm put-parameter --name "/birthday-bot/BOT_TOKEN" \
+          --value "YOUR_TOKEN" --type "SecureString"
+        aws ssm put-parameter --name "/birthday-bot/WEBHOOK_SECRET" \
+          --value "YOUR_SECRET" --type "SecureString"
+        aws ssm put-parameter --name "/birthday-bot/MONGODB_URI" \
+          --value "mongodb://..." --type "SecureString"
+        ```
 
     Лицензия
         MIT

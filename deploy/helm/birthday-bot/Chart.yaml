@@ -1,6 +1,0 @@
-apiVersion: v2
-name: birthday-bot
-description: Telegram birthday reminder bot for EKS
-type: application
-version: 0.1.0
-appVersion: "1.0.0"

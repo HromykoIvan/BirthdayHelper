@@ -1,7 +1,0 @@
-1. Set Telegram webhook (replace HOST with your DNS):
-   curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
-     -H "Content-Type: application/json" \
-     -d "{\"url\":\"https://{{ .Values.ingress.host }}/telegram/webhook\",\"secret_token\":\"REPLACE_ME_WEBHOOK_SECRET\"}"
-
-2. Check health:
-   curl https://{{ .Values.ingress.host }}/health/ready

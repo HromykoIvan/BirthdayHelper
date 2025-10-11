@@ -1,0 +1,55 @@
+name: CDK Deploy (EC2)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ master ]
+    paths:
+      - "deploy/cdk/**"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+  AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }} # твоя OIDC-роль
+  DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+  ECR_REPO: ${{ vars.ECR_REPO }}
+  IMAGE_TAG: latest
+
+jobs:
+  cdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install CDK deps
+        working-directory: deploy/cdk
+        run: |
+          npm ci
+
+      - name: CDK bootstrap (once per account/region)
+        working-directory: deploy/cdk
+        run: npx cdk bootstrap aws://${{ env.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }}
+
+      - name: CDK deploy
+        working-directory: deploy/cdk
+        env:
+          CDK_DEFAULT_ACCOUNT: ${{ env.AWS_ACCOUNT_ID }}
+          CDK_DEFAULT_REGION: ${{ env.AWS_REGION }}
+          DOMAIN_NAME: ${{ env.DOMAIN_NAME }}
+          ECR_REPO: ${{ env.ECR_REPO }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        run: npm run deploy
