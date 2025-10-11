@@ -1,28 +1,39 @@
-.PHONY: build test run docker-build docker-push helm-install helm-upgrade helm-uninstall kube-ctx
+.PHONY: build test run docker-build docker-push cdk-help cdk-install cdk-deploy cdk-destroy
 
 build:
-\tdotnet build BirthdayBot.sln
+	dotnet build BirthdayBot.sln
 
 test:
-\tdotnet test BirthdayBot.sln
+	dotnet test BirthdayBot.sln
 
 run:
-\tdotnet run --project backend/src/BirthdayBot.Api/BirthdayBot.Api.csproj
+	dotnet run --project backend/src/BirthdayBot.Api/BirthdayBot.Api.csproj
 
 docker-build:
-\tdocker build -t birthday-bot:local .
+	docker build -t birthday-bot:local .
 
 docker-push:
-\t@echo "Use CI to push to ECR"
+	@echo "Use CI to push to ECR"
 
-helm-install:
-\thelm upgrade --install birthday-bot deploy/helm/birthday-bot --namespace birthday-bot --create-namespace
+# CDK commands
+cdk-help:
+	@echo "CDK Commands:"
+	@echo "  cdk-install  - Install CDK dependencies"
+	@echo "  cdk-deploy   - Deploy AWS infrastructure"
+	@echo "  cdk-destroy  - Destroy AWS infrastructure"
+	@echo ""
+	@echo "Required environment variables:"
+	@echo "  DOMAIN_NAME          - Your domain name"
+	@echo "  CDK_DEFAULT_ACCOUNT  - AWS Account ID"
+	@echo "  CDK_DEFAULT_REGION   - AWS Region"
+	@echo "  ECR_REPO            - ECR repository name (optional, default: birthday-helper)"
+	@echo "  IMAGE_TAG           - Docker image tag (optional, default: latest)"
 
-helm-upgrade:
-\thelm upgrade birthday-bot deploy/helm/birthday-bot --namespace birthday-bot
+cdk-install:
+	cd deploy/cdk && npm install
 
-helm-uninstall:
-\thelm uninstall birthday-bot --namespace birthday-bot
+cdk-deploy:
+	cd deploy/cdk && $(MAKE) deploy-full
 
-kube-helpers:
-\tkubectl -n birthday-bot get pods,svc,ingress
+cdk-destroy:
+	cd deploy/cdk && $(MAKE) destroy

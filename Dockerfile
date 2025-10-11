@@ -30,4 +30,4 @@
     FROM base AS final
     WORKDIR /app
     COPY --from=build /app/publish .
-    ENTRYPOINT ["dotnet", "BirthdayBot.Api.dll"]    
+    ENTRYPOINT ["dotnet", "BirthdayBot.Api.dll"]   
