@@ -219,7 +219,7 @@ Bash scripts for deploying Docker images to EC2 via SSM.
 Output: `i-0abc123def456789`
 
 This script:
-1. First tries SSM parameter: `/birthday-bot/instance-id`
+1. First tries SSM parameter: `/birthday-bot/bot-instance-id`
 2. Falls back to EC2 tag: `Name=BirthdayBotStack/BotInstance`
 
 ### Deploy Image
@@ -273,7 +273,7 @@ These scripts are used by GitHub Actions workflows:
 ### "Instance not found"
 Check that:
 - EC2 instance is running
-- SSM parameter `/birthday-bot/instance-id` exists OR
+- SSM parameter `/birthday-bot/bot-instance-id` exists OR
 - EC2 tag `Name=BirthdayBotStack/BotInstance` is set
 
 ### "Command execution failed"

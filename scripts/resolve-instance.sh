@@ -3,7 +3,7 @@
 set -euo pipefail
 
 REGION="${AWS_REGION:-eu-central-1}"
-PARAM="/birthday-bot/instance-id"
+PARAM="/birthday-bot/bot-instance-id"
 
 # Try SSM parameter first
 if aws ssm get-parameter --name "$PARAM" --region "$REGION" >/dev/null 2>&1; then

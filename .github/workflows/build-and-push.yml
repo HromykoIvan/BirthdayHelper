@@ -89,7 +89,7 @@ jobs:
         id: get-instance
         run: |
           set -e
-          PARAM="/birthday-bot/instance-id"
+          PARAM="/birthday-bot/bot-instance-id"
           if aws ssm get-parameter --name "$PARAM" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
             IID=$(aws ssm get-parameter --name "$PARAM" --region "${{ env.AWS_REGION }}" --query 'Parameter.Value' --output text)
             echo "Found instance ID in SSM parameter: $IID"
