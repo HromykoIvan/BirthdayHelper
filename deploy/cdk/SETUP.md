@@ -139,6 +139,8 @@ aws ecr create-repository --repository-name birthday-helper --region us-east-1
 1. Сделайте push в ветку `master` с изменениями в `deploy/cdk/`
 2. Или запустите workflow вручную через GitHub Actions
 
+**Примечание:** CDK bootstrap выполняется автоматически только при первом деплое. GitHub Actions проверяет существование стека `CDKToolkit` и запускает bootstrap только если его нет, что ускоряет повторные деплои.
+
 ### Ручной деплой (для тестирования)
 
 ```bash

@@ -40,9 +40,20 @@ jobs:
         run: |
           npm ci
 
-      - name: CDK bootstrap (once per account/region)
+      - name: Ensure CDK bootstrap exists (run only if needed)
         working-directory: deploy/cdk
-        run: npx cdk bootstrap aws://${{ env.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }}
+        env:
+          STACK: CDKToolkit
+          AWS_ACCOUNT_ID: ${{ env.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          set -e
+          if aws cloudformation describe-stacks --stack-name "$STACK" --region "$AWS_REGION" >/dev/null 2>&1; then
+            echo "CDK already bootstrapped in $AWS_REGION"
+          else
+            echo "CDK not bootstrapped, running bootstrap..."
+            npx cdk bootstrap aws://$AWS_ACCOUNT_ID/$AWS_REGION
+          fi
 
       - name: CDK deploy
         working-directory: deploy/cdk
