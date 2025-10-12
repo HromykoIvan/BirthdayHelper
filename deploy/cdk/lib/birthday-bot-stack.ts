@@ -213,19 +213,13 @@ export class BirthdayBotStack extends Stack {
     });
     (instance.node.defaultChild as ec2.CfnInstance).iamInstanceProfile = profile.ref;
 
-    // --- SSM Parameters for GitHub Actions ---
-    // Primary parameter (used by workflows)
+    // --- SSM Parameter for GitHub Actions ---
     new ssm.StringParameter(this, 'BotInstanceIdParam', {
-      parameterName: '/birthday-bot/instance-id',
-      stringValue: instance.instanceId,
-      description: 'Bot EC2 Instance ID for GitHub Actions deployment'
-    });
-    
-    // Legacy parameter name for backward compatibility
-    new ssm.StringParameter(this, 'BotInstanceIdParamLegacy', {
       parameterName: '/birthday-bot/bot-instance-id',
       stringValue: instance.instanceId,
-      description: 'Bot EC2 Instance ID (legacy name)'
+      description: 'Bot EC2 Instance ID for GitHub Actions deployment',
+      // Don't delete parameter when stack is destroyed
+      removalPolicy: RemovalPolicy.RETAIN
     });
 
     // --- Outputs ---
