@@ -2,6 +2,18 @@
 
 Этот документ описывает настройку AWS CDK для автоматического деплоя Birthday Bot через GitHub Actions.
 
+## Архитектура
+
+1. **EC2 Instances** (2x t4g.micro, Free Tier):
+   - **Bot Instance** - основной сервер с API и Caddy
+   - **Mongo Instance** - MongoDB 6 в Docker контейнере
+2. **Security Groups**:
+   - **Bot SG** - разрешает HTTP/HTTPS (порт 80 для ACME, 443 для webhook)
+   - **Mongo SG** - разрешает MongoDB (порт 27017 только от Bot SG)
+3. **Private DNS** - Route53 приватная зона `svc.local` с записью `mongo.svc.local`
+4. **IAM Roles** - права на ECR, Secrets Manager, CloudWatch, SSM
+5. **Автоматизация** - Docker Compose, обновление IP, HTTPS, MongoDB connection string
+
 ## 1. AWS OIDC настройка
 
 ### Создание OIDC Identity Provider
@@ -155,7 +167,27 @@ export ECR_REPO="birthday-helper"
 npm run deploy
 ```
 
-## 7. Мониторинг деплоя
+## 7. MongoDB автоматизация
+
+После деплоя CDK автоматически:
+
+1. **Создает MongoDB инстанс** с Docker контейнером `mongo:6`
+2. **Обновляет секрет** `birthday-bot/mongo-url` на `mongodb://mongo.svc.local:27017/birthdaybot`
+3. **Настраивает приватный DNS** - `mongo.svc.local` → приватный IP MongoDB
+4. **Применяет безопасность** - MongoDB доступен только с Bot SG
+
+### Проверка MongoDB
+
+```bash
+# Подключение к MongoDB через SSM
+aws ssm start-session --target i-<MongoInstanceId>
+
+# На MongoDB инстансе:
+sudo docker logs mongo                    # логи MongoDB
+sudo docker exec -it mongo mongosh        # подключение к MongoDB
+```
+
+## 8. Мониторинг деплоя
 
 ### GitHub Actions
 

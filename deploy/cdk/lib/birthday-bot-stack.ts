@@ -1,6 +1,7 @@
 import {
   Stack, StackProps, CfnOutput, Duration, aws_ec2 as ec2,
-  aws_iam as iam, aws_ssm as ssm, aws_secretsmanager as secretsmanager
+  aws_iam as iam, aws_ssm as ssm, aws_secretsmanager as secretsmanager,
+  aws_route53 as route53, aws_route53_targets as r53t
 } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
@@ -20,20 +21,30 @@ export class BirthdayBotStack extends Stack {
 
     const { domainName, ecrRepo, imageTag, parameterPaths } = props;
 
-    // --- Security Group ---
+    // --- Security Groups ---
     const vpc = ec2.Vpc.fromLookup(this, 'DefaultVpc', { isDefault: true });
-    const sg = new ec2.SecurityGroup(this, 'BotSg', {
+    
+    // SG для бота
+    const botSg = new ec2.SecurityGroup(this, 'BotSg', {
       vpc,
       description: 'Allow HTTP/HTTPS for Caddy',
       allowAllOutbound: true
     });
     // HTTP для ACME проверки Let's Encrypt
-    sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'HTTP for ACME');
-    sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'HTTPS for webhook');
+    botSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'HTTP for ACME');
+    botSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'HTTPS for webhook');
     
     // Поддержка IPv6 (опционально)
-    sg.addIngressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(80), 'HTTP IPv6 for ACME');
-    sg.addIngressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(443), 'HTTPS IPv6 for webhook');
+    botSg.addIngressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(80), 'HTTP IPv6 for ACME');
+    botSg.addIngressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(443), 'HTTPS IPv6 for webhook');
+
+    // SG для MongoDB: принимает только от BotSg
+    const mongoSg = new ec2.SecurityGroup(this, 'MongoSg', {
+      vpc,
+      allowAllOutbound: true,
+      description: 'Allow 27017 from bot only',
+    });
+    mongoSg.addIngressRule(botSg, ec2.Port.tcp(27017), 'Mongo from bot');
 
     // --- IAM Role for EC2 ---
     const role = new iam.Role(this, 'Ec2Role', {
@@ -114,11 +125,62 @@ export class BirthdayBotStack extends Stack {
       'sudo bash /opt/birthday/bootstrap/install.sh'
     );
 
-    // --- EC2 Instance ---
+    // --- MongoDB Instance ---
+    // IAM для SSM + pull образов
+    const mongoRole = new iam.Role(this, 'MongoRole', {
+      assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+    });
+    mongoRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
+
+    // AMI и инстанс MongoDB
+    const mongoInstance = new ec2.Instance(this, 'MongoInstance', {
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },   // просто, чтобы тянуть образы из инета
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.MICRO),     // Free Tier
+      machineImage: ec2.MachineImage.latestAmazonLinux2023({
+        cpuType: ec2.AmazonLinuxCpuType.ARM_64,
+      }),
+      securityGroup: mongoSg,
+      role: mongoRole,
+      ssmSessionPermissions: true,
+      blockDevices: [{
+        deviceName: '/dev/xvda',
+        volume: ec2.BlockDeviceVolume.ebs(16, { encrypted: true }),
+      }],
+    });
+
+    // UserData: docker + mongo:6 с томом /var/lib/mongo
+    mongoInstance.addUserData(
+      // docker
+      'dnf -y update',
+      'dnf -y install docker',
+      'systemctl enable --now docker',
+      // папка и запуск контейнера
+      'mkdir -p /var/lib/mongo',
+      'docker run -d --restart unless-stopped --name mongo \\',
+      '  -v /var/lib/mongo:/data/db -p 27017:27017 mongo:6'
+    );
+
+    // --- Private DNS Zone ---
+    // Private Hosted Zone в VPC
+    const phz = new route53.PrivateHostedZone(this, 'SvcLocalZone', {
+      zoneName: 'svc.local',
+      vpc,
+    });
+
+    // A-запись на приватный IP Mongo
+    new route53.ARecord(this, 'MongoPrivateA', {
+      zone: phz,
+      recordName: 'mongo',
+      target: route53.RecordTarget.fromIpAddresses(mongoInstance.instancePrivateIp),
+      ttl: Duration.minutes(1),
+    });
+
+    // --- EC2 Instance for Bot ---
     const instance = new ec2.Instance(this, 'BotInstance', {
       vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
-      securityGroup: sg,
+      securityGroup: botSg,
       role,
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.MICRO),
       machineImage: amzn2023Arm,
@@ -129,5 +191,7 @@ export class BirthdayBotStack extends Stack {
 
     new CfnOutput(this, 'PublicIp', { value: instance.instancePublicIp });
     new CfnOutput(this, 'InstanceId', { value: instance.instanceId });
+    new CfnOutput(this, 'MongoInstanceId', { value: mongoInstance.instanceId });
+    new CfnOutput(this, 'MongoPrivateIp', { value: mongoInstance.instancePrivateIp });
   }
 }
