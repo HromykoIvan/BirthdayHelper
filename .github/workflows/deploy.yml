@@ -15,7 +15,7 @@ env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
   AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
-  ECR_REPO_NAME: birthday-bot
+  ECR_REPO: ${{ vars.ECR_REPO }}
 
 jobs:
   build-push-deploy:
@@ -34,7 +34,7 @@ jobs:
 
       - name: Build and push Docker image
         run: |
-          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}"
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
           docker build -t "${ECR}:latest" -f Dockerfile .
           docker push "${ECR}:latest"
 
