@@ -80,20 +80,24 @@ npm run destroy
 
 ## Что создается
 
-1. **Security Group** - разрешает HTTP/HTTPS трафик (порт 80 для ACME challenge, 443 для webhook)
-2. **IAM Role** - с правами на ECR, Secrets Manager и CloudWatch
-3. **EC2 Instance** - с предустановленным Docker и Docker Compose
-4. **Автоматизация** - система скриптов:
+1. **Security Groups** - Bot SG (HTTP/HTTPS) и Mongo SG (27017 только от Bot SG)
+2. **IAM Roles** - с правами на ECR, Secrets Manager и CloudWatch
+3. **EC2 Instances** - Bot Instance (API + Caddy) и Mongo Instance (MongoDB 6)
+4. **Private DNS** - Route53 приватная зона `svc.local` с записью `mongo.svc.local`
+5. **Автоматизация** - система скриптов:
    - Получение секретов из AWS Secrets Manager
    - Автоматическое обновление IP в DuckDNS
    - Docker Compose для запуска API + Caddy
    - Автоматический HTTPS через Let's Encrypt
+   - Автоматическое обновление MongoDB connection string
 
 ## Мониторинг
 
 После деплоя CDK выведет:
-- `PublicIp` - публичный IP инстанса
-- `InstanceId` - ID инстанса для AWS Console
+- `PublicIp` - публичный IP инстанса бота
+- `InstanceId` - ID инстанса бота для мониторинга
+- `MongoInstanceId` - ID MongoDB инстанса
+- `MongoPrivateIp` - приватный IP MongoDB
 
 ## Проверка доступности
 
@@ -112,6 +116,16 @@ curl -kI https://your-domain.com
 sudo ss -lntp | egrep ':80|:443'
 ```
 
+### Проверка MongoDB:
+```bash
+# Подключение к MongoDB через SSM Session Manager
+aws ssm start-session --target i-<MongoInstanceId>
+
+# На MongoDB инстансе:
+sudo docker logs mongo                    # логи MongoDB
+sudo docker exec -it mongo mongosh        # подключение к MongoDB
+```
+
 ## Логи
 
 ```bash
@@ -123,6 +137,10 @@ sudo journalctl -u duckdns -f
 
 # Логи Docker контейнеров
 sudo docker logs birthday_api_1
+
+# Логи MongoDB (через SSM)
+aws ssm start-session --target i-<MongoInstanceId>
+sudo docker logs -f mongo
 sudo docker logs birthday_caddy_1
 
 # Логи Docker

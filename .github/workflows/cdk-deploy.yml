@@ -64,3 +64,10 @@ jobs:
           ECR_REPO: ${{ env.ECR_REPO }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
         run: npm run deploy
+
+      - name: Set mongo connection string secret
+        run: |
+          aws secretsmanager put-secret-value \
+            --region ${{ env.AWS_REGION }} \
+            --secret-id birthday-bot/mongo-url \
+            --secret-string 'mongodb://mongo.svc.local:27017/birthdaybot'
