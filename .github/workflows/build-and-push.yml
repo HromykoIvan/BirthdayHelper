@@ -73,3 +73,73 @@ jobs:
       - name: Output image URI
         run: |
           echo "IMAGE_URI=${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${{ env.IMAGE_TAG }}"
+
+  rollout:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve bot instance ID (SSM param or tag)
+        id: get-instance
+        run: |
+          set -e
+          PARAM="/birthday-bot/instance-id"
+          if aws ssm get-parameter --name "$PARAM" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+            IID=$(aws ssm get-parameter --name "$PARAM" --region "${{ env.AWS_REGION }}" --query 'Parameter.Value' --output text)
+            echo "Found instance ID in SSM parameter: $IID"
+          else
+            echo "SSM parameter not found, searching by tag..."
+            IID=$(aws ec2 describe-instances \
+              --region "${{ env.AWS_REGION }}" \
+              --filters "Name=tag:Name,Values=BirthdayBotStack/BotInstance" "Name=instance-state-name,Values=running" \
+              --query 'Reservations[0].Instances[0].InstanceId' --output text)
+            echo "Found instance ID by tag: $IID"
+          fi
+          echo "iid=$IID" >> $GITHUB_OUTPUT
+
+      - name: Rollout container via SSM
+        run: |
+          set -e
+          IID='${{ steps.get-instance.outputs.iid }}'
+          [ -z "$IID" ] || [ "$IID" = "None" ] && { echo "No instance id resolved"; exit 1; }
+          
+          ECR="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}"
+          IMG="${ECR}:latest"
+          
+          echo "Rolling out to instance: $IID"
+          echo "Image: $IMG"
+          
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$IID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Rollout birthday-bot ${IMG}" \
+            --parameters 'commands=[
+              "set -e",
+              "echo \"[$(date)] Starting rollout...\"",
+              "aws ecr get-login-password --region '"${{ env.AWS_REGION }}"' | docker login --username AWS --password-stdin '"${ECR}"'",
+              "cd /opt/birthday || exit 1",
+              "docker pull '"${IMG}"'",
+              "docker compose --env-file .compose.env down app || true",
+              "docker compose --env-file .compose.env up -d app",
+              "docker image prune -f || true",
+              "echo \"[$(date)] Rollout completed\""
+            ]' \
+            --region "${{ env.AWS_REGION }}" \
+            --query "Command.CommandId" \
+            --output text)
+          
+          echo "SSM Command ID: $COMMAND_ID"
+          echo "Waiting for command to complete..."
+          
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$IID" \
+            --region "${{ env.AWS_REGION }}" || true
+          
+          echo "Rollout completed successfully!"
