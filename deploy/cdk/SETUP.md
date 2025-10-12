@@ -59,6 +59,16 @@
 - `CloudFormationFullAccess`
 - `AmazonS3FullAccess`
 
+## Безопасность Security Group
+
+CDK автоматически создает Security Group с правильными правилами:
+- **Порт 80** - для ACME challenge от Let's Encrypt
+- **Порт 443** - для HTTPS webhook от Telegram
+- **IPv6 поддержка** - для будущей совместимости
+- **Outbound** - все трафик разрешен (нужно для Let's Encrypt и Telegram)
+
+**Важно:** Порт 80 оставляется открытым для ACME проверки и редиректа на 443. Это стандартная практика для Let's Encrypt.
+
 ## 2. GitHub Repository Variables
 
 В настройках репозитория GitHub добавьте следующие **Repository variables**:

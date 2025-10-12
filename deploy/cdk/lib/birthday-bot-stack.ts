@@ -24,8 +24,13 @@ export class BirthdayBotStack extends Stack {
       description: 'Allow HTTP/HTTPS for Caddy',
       allowAllOutbound: true
     });
-    sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'HTTP');
-    sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'HTTPS');
+    // HTTP для ACME проверки Let's Encrypt
+    sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'HTTP for ACME');
+    sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'HTTPS for webhook');
+    
+    // Поддержка IPv6 (опционально)
+    sg.addIngressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(80), 'HTTP IPv6 for ACME');
+    sg.addIngressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(443), 'HTTPS IPv6 for webhook');
 
     // --- IAM Role for EC2 ---
     const role = new iam.Role(this, 'Ec2Role', {
