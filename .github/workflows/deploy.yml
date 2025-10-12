@@ -1,0 +1,69 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [ master ]
+    paths-ignore:
+      - "deploy/cdk/**"
+      - "**.md"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+  AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
+  ECR_REPO_NAME: birthday-bot
+
+jobs:
+  build-push-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        run: |
+          ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}"
+          docker build -t "${ECR}:latest" -f Dockerfile .
+          docker push "${ECR}:latest"
+
+      - name: Deploy via SSM to bot instance
+        run: |
+          BOT_INSTANCE_ID=$(aws ssm get-parameter \
+            --name "/birthday-bot/bot-instance-id" \
+            --region "$AWS_REGION" \
+            --query "Parameter.Value" \
+            --output text)
+          
+          echo "Deploying to instance: $BOT_INSTANCE_ID"
+          
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$BOT_INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "birthday-bot deploy from GitHub Actions" \
+            --parameters 'commands=["cd /opt/birthday && git pull --rebase || true","bash /opt/birthday/ops/deploy.sh"]' \
+            --region "$AWS_REGION" \
+            --query "Command.CommandId" \
+            --output text)
+          
+          echo "Command ID: $COMMAND_ID"
+          echo "Waiting for command to complete..."
+          
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$BOT_INSTANCE_ID" \
+            --region "$AWS_REGION" || true
+          
+          echo "Deploy command completed!"
+

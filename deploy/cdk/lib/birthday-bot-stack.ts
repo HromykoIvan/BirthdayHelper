@@ -1,7 +1,8 @@
 import {
-  Stack, StackProps, CfnOutput, Duration, aws_ec2 as ec2,
-  aws_iam as iam, aws_ssm as ssm, aws_secretsmanager as secretsmanager,
-  aws_route53 as route53, aws_route53_targets as r53t
+  Stack, StackProps, CfnOutput, Duration, RemovalPolicy,
+  aws_ec2 as ec2, aws_iam as iam, aws_ssm as ssm,
+  aws_secretsmanager as secretsmanager, aws_route53 as route53,
+  aws_route53_targets as r53t, aws_ecr as ecr
 } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
@@ -20,6 +21,17 @@ export class BirthdayBotStack extends Stack {
     super(scope, id, props);
 
     const { domainName, ecrRepo, imageTag, parameterPaths } = props;
+
+    // --- ECR Repository ---
+    const repository = new ecr.Repository(this, 'BirthdayBotRepo', {
+      repositoryName: ecrRepo,
+      imageScanOnPush: true,
+      lifecycleRules: [{
+        maxImageCount: 20,
+        description: 'Keep only 20 latest images'
+      }],
+      removalPolicy: RemovalPolicy.RETAIN
+    });
 
     // --- Security Groups ---
     const vpc = ec2.Vpc.fromLookup(this, 'DefaultVpc', { isDefault: true });
@@ -71,6 +83,9 @@ export class BirthdayBotStack extends Stack {
       ]
     }));
 
+    // Права на ECR для pull образов
+    repository.grantPull(role);
+
     // Права читать секреты из Secrets Manager
     role.addToPolicy(new iam.PolicyStatement({
       sid: 'ReadSecretsForBirthdayBot',
@@ -110,19 +125,31 @@ export class BirthdayBotStack extends Stack {
       // логин в ECR
       `aws ecr get-login-password --region ${this.region} | docker login --username AWS --password-stdin ${this.account}.dkr.ecr.${this.region}.amazonaws.com`,
 
-      // создаем каталоги и устанавливаем переменные окружения
-      'sudo mkdir -p /opt/birthday/bootstrap && sudo chown ec2-user:ec2-user /opt/birthday',
-      `echo "ECR_IMAGE=${repoUri}" | sudo tee -a /etc/environment`,
-      `echo "IMAGE_TAG=${imageTag}" | sudo tee -a /etc/environment`,
-      `echo "DOMAIN_NAME=${domainName}" | sudo tee -a /etc/environment`,
+      // Docker Compose
+      'curl -L "https://github.com/docker/compose/releases/download/v2.29.2/docker-compose-linux-aarch64" -o /usr/local/bin/docker-compose',
+      'chmod +x /usr/local/bin/docker-compose',
+
+      // Git
+      'dnf install -y git',
+
+      // Клонируем репозиторий
+      'mkdir -p /opt',
+      'cd /opt && git clone https://github.com/HromykoIvan/BirthdayHelper.git birthday || true',
+      'cd /opt/birthday && git checkout master && git pull --rebase || true',
+      'chown -R ec2-user:ec2-user /opt/birthday',
+
+      // Устанавливаем переменные окружения
+      `echo "REGION=${this.region}" | sudo tee -a /etc/environment`,
+      `echo "DOMAIN=${domainName}" | sudo tee -a /etc/environment`,
+      `echo "ECR_REPO=${repoUri}" | sudo tee -a /etc/environment`,
       'source /etc/environment',
 
-      // загружаем скрипт установки
-      'curl -fsSL "https://raw.githubusercontent.com/HromykoIvan/BirthdayHelper/master/deploy/ec2/install.sh" -o /opt/birthday/bootstrap/install.sh',
-      'chmod +x /opt/birthday/bootstrap/install.sh',
-
-      // устанавливаем наши скрипты и сервисы
-      'sudo bash /opt/birthday/bootstrap/install.sh'
+      // Устанавливаем systemd unit
+      'cp /opt/birthday/ops/birthday.service /etc/systemd/system/birthday.service',
+      'chmod +x /opt/birthday/ops/env-from-secrets.sh /opt/birthday/ops/deploy.sh',
+      'systemctl daemon-reload',
+      'systemctl enable birthday',
+      'systemctl start birthday'
     );
 
     // --- MongoDB Instance ---
@@ -189,9 +216,18 @@ export class BirthdayBotStack extends Stack {
     });
     (instance.node.defaultChild as ec2.CfnInstance).iamInstanceProfile = profile.ref;
 
+    // --- SSM Parameter для GitHub Actions ---
+    new ssm.StringParameter(this, 'BotInstanceIdParam', {
+      parameterName: '/birthday-bot/bot-instance-id',
+      stringValue: instance.instanceId,
+      description: 'Bot EC2 Instance ID for GitHub Actions deployment'
+    });
+
+    // --- Outputs ---
     new CfnOutput(this, 'PublicIp', { value: instance.instancePublicIp });
     new CfnOutput(this, 'InstanceId', { value: instance.instanceId });
     new CfnOutput(this, 'MongoInstanceId', { value: mongoInstance.instanceId });
     new CfnOutput(this, 'MongoPrivateIp', { value: mongoInstance.instancePrivateIp });
+    new CfnOutput(this, 'EcrRepoUri', { value: repository.repositoryUri });
   }
 }

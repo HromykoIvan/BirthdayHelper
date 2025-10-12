@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  app:
+    image: ${ECR_REPO}:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    networks: [net]
+    # Ждём readiness самого приложения
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+      - EMAIL=${ACME_EMAIL}
+    volumes:
+      - ./ops/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [net]
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}
+
+networks:
+  net: {}
+
