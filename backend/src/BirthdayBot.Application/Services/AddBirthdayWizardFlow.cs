@@ -132,11 +132,28 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                         // Прямо создаём день рождения
                         try
                         {
+                            // Получаем или создаем пользователя
                             var user = await _users.GetByTelegramUserIdAsync(s1.UserId, ct);
                             if (user == null)
                             {
-                                await SafeEditAsync(update, chatId, "❌ Пользователь не найден", ct);
-                                return true;
+                                // Создаем нового пользователя, если его еще нет
+                                var fromUser = update.CallbackQuery?.From;
+                                if (fromUser == null)
+                                {
+                                    await SafeEditAsync(update, chatId, "❌ Не удалось получить информацию о пользователе", ct);
+                                    return true;
+                                }
+
+                                user = new BirthdayBot.Domain.Entities.User
+                                {
+                                    TelegramUserId = fromUser.Id,
+                                    Lang = BirthdayBot.Domain.Enums.Language.Ru,
+                                    Tone = BirthdayBot.Domain.Enums.Tone.Friendly,
+                                    Timezone = "Europe/Warsaw",
+                                    NotifyAtLocalTime = "09:00",
+                                    AutoGenerateGreetings = true
+                                };
+                                await _users.CreateAsync(user, ct);
                             }
 
                             var birthday = new Birthday
