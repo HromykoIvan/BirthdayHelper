@@ -28,10 +28,10 @@ Mongo__Database=${DB_NAME}
 MONGODB_URI=${MONGO_URI}
 MONGO_DBNAME=${DB_NAME}
 
-# домен/сертификаты
+# Domain and certificates
 DOMAIN=${DOMAIN}
 ACME_EMAIL=you@example.com
 ENV
 
-echo "[ok] .env обновлён"
+echo "[ok] .env updated"
 

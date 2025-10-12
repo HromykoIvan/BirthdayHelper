@@ -13,7 +13,7 @@ type Params = {
   parameterPaths: { botToken: string; webhookSecret: string; mongoUri: string; };
 };
 
-// Константы для секретов
+// Constants for secrets
 const SECRET_PATH_PREFIX = 'birthday-bot/';
 
 export class BirthdayBotStack extends Stack {
@@ -23,7 +23,7 @@ export class BirthdayBotStack extends Stack {
     const { domainName, ecrRepo, imageTag, parameterPaths } = props;
 
     // --- ECR Repository (import existing) ---
-    // Используем существующий репозиторий, созданный через GitHub Actions
+    // Use existing repository created by GitHub Actions
     const repository = ecr.Repository.fromRepositoryName(
       this,
       'BirthdayBotRepo',
@@ -33,21 +33,21 @@ export class BirthdayBotStack extends Stack {
     // --- Security Groups ---
     const vpc = ec2.Vpc.fromLookup(this, 'DefaultVpc', { isDefault: true });
     
-    // SG для бота
+    // Bot Security Group
     const botSg = new ec2.SecurityGroup(this, 'BotSg', {
       vpc,
       description: 'Allow HTTP/HTTPS for Caddy',
       allowAllOutbound: true
     });
-    // HTTP для ACME проверки Let's Encrypt
+    // HTTP for ACME Let's Encrypt challenge
     botSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'HTTP for ACME');
     botSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'HTTPS for webhook');
     
-    // Поддержка IPv6 (опционально)
+    // IPv6 support (optional)
     botSg.addIngressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(80), 'HTTP IPv6 for ACME');
     botSg.addIngressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(443), 'HTTPS IPv6 for webhook');
 
-    // SG для MongoDB: принимает только от BotSg
+    // MongoDB Security Group: accepts connections only from Bot SG
     const mongoSg = new ec2.SecurityGroup(this, 'MongoSg', {
       vpc,
       allowAllOutbound: true,
@@ -70,7 +70,7 @@ export class BirthdayBotStack extends Stack {
       iam.ManagedPolicy.fromAwsManagedPolicyName('CloudWatchAgentServerPolicy')
     );
 
-    // Права читать SSM параметры (SecureString без кастомного KMS — ок)
+    // Permissions to read SSM parameters (SecureString without custom KMS is OK)
     role.addToPolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter', 'ssm:GetParameters', 'ssm:GetParametersByPath'],
       resources: [
@@ -80,10 +80,10 @@ export class BirthdayBotStack extends Stack {
       ]
     }));
 
-    // Права на ECR для pull образов
+    // Permissions for ECR image pull
     repository.grantPull(role);
 
-    // Права читать секреты из Secrets Manager
+    // Permissions to read secrets from Secrets Manager
     role.addToPolicy(new iam.PolicyStatement({
       sid: 'ReadSecretsForBirthdayBot',
       actions: ['secretsmanager:GetSecretValue'],
@@ -119,29 +119,29 @@ export class BirthdayBotStack extends Stack {
       '  unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install',
       'fi',
 
-      // логин в ECR
+      // Login to ECR
       `aws ecr get-login-password --region ${this.region} | docker login --username AWS --password-stdin ${this.account}.dkr.ecr.${this.region}.amazonaws.com`,
 
-      // Docker Compose
+      // Install Docker Compose
       'curl -L "https://github.com/docker/compose/releases/download/v2.29.2/docker-compose-linux-aarch64" -o /usr/local/bin/docker-compose',
       'chmod +x /usr/local/bin/docker-compose',
 
-      // Git
+      // Install Git
       'dnf install -y git',
 
-      // Клонируем репозиторий
+      // Clone repository
       'mkdir -p /opt',
       'cd /opt && git clone https://github.com/HromykoIvan/BirthdayHelper.git birthday || true',
       'cd /opt/birthday && git checkout master && git pull --rebase || true',
       'chown -R ec2-user:ec2-user /opt/birthday',
 
-      // Устанавливаем переменные окружения
+      // Set environment variables
       `echo "REGION=${this.region}" | sudo tee -a /etc/environment`,
       `echo "DOMAIN=${domainName}" | sudo tee -a /etc/environment`,
       `echo "ECR_REPO=${ecrRepo}" | sudo tee -a /etc/environment`,
       'source /etc/environment',
 
-      // Устанавливаем systemd unit
+      // Install systemd unit
       'cp /opt/birthday/ops/birthday.service /etc/systemd/system/birthday.service',
       'chmod +x /opt/birthday/ops/env-from-secrets.sh /opt/birthday/ops/deploy.sh',
       'systemctl daemon-reload',
@@ -150,16 +150,16 @@ export class BirthdayBotStack extends Stack {
     );
 
     // --- MongoDB Instance ---
-    // IAM для SSM + pull образов
+    // IAM role for SSM + pulling images
     const mongoRole = new iam.Role(this, 'MongoRole', {
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
     });
     mongoRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
 
-    // AMI и инстанс MongoDB
+    // MongoDB instance (AMI + configuration)
     const mongoInstance = new ec2.Instance(this, 'MongoInstance', {
       vpc,
-      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },   // просто, чтобы тянуть образы из инета
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },   // Public subnet to pull images from internet
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.MICRO),     // Free Tier
       machineImage: ec2.MachineImage.latestAmazonLinux2023({
         cpuType: ec2.AmazonLinuxCpuType.ARM_64,
@@ -173,26 +173,26 @@ export class BirthdayBotStack extends Stack {
       }],
     });
 
-    // UserData: docker + mongo:6 с томом /var/lib/mongo
+    // UserData: install docker + run mongo:6 with persistent volume
     mongoInstance.addUserData(
-      // docker
+      // Install and start docker
       'dnf -y update',
       'dnf -y install docker',
       'systemctl enable --now docker',
-      // папка и запуск контейнера
+      // Create directory and run container
       'mkdir -p /var/lib/mongo',
       'docker run -d --restart unless-stopped --name mongo \\',
       '  -v /var/lib/mongo:/data/db -p 27017:27017 mongo:6'
     );
 
     // --- Private DNS Zone ---
-    // Private Hosted Zone в VPC
+    // Private Hosted Zone in VPC
     const phz = new route53.PrivateHostedZone(this, 'SvcLocalZone', {
       zoneName: 'svc.local',
       vpc,
     });
 
-    // A-запись на приватный IP Mongo
+    // A-record pointing to MongoDB private IP
     new route53.ARecord(this, 'MongoPrivateA', {
       zone: phz,
       recordName: 'mongo',
@@ -213,7 +213,7 @@ export class BirthdayBotStack extends Stack {
     });
     (instance.node.defaultChild as ec2.CfnInstance).iamInstanceProfile = profile.ref;
 
-    // --- SSM Parameter для GitHub Actions ---
+    // --- SSM Parameter for GitHub Actions ---
     new ssm.StringParameter(this, 'BotInstanceIdParam', {
       parameterName: '/birthday-bot/bot-instance-id',
       stringValue: instance.instanceId,
