@@ -1,0 +1,25 @@
+{
+  "name": "birthday-bot",
+  "version": "1.0.0",
+  "description": "Birthday reminder Telegram bot with AWS deployment",
+  "scripts": {
+    "mongo:tunnel": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/mongo-tunnel-ssm.ps1",
+    "mongo:uri": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/mongo-uri.ps1",
+    "mongo:compass": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/mongo-compass.ps1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HromykoIvan/BirthdayHelper.git"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "birthday",
+    "reminder",
+    "aws",
+    "cdk"
+  ],
+  "author": "Ivan Hromyko",
+  "license": "MIT"
+}
+
