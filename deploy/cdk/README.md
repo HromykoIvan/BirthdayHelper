@@ -80,7 +80,7 @@ npm run destroy
 
 ## Что создается
 
-1. **Security Group** - разрешает HTTP/HTTPS трафик
+1. **Security Group** - разрешает HTTP/HTTPS трафик (порт 80 для ACME challenge, 443 для webhook)
 2. **IAM Role** - с правами на ECR, SSM и CloudWatch
 3. **EC2 Instance** - с предустановленным Docker и Caddy
 4. **User Data Script** - автоматически:
@@ -95,6 +95,23 @@ npm run destroy
 После деплоя CDK выведет:
 - `PublicIp` - публичный IP инстанса
 - `InstanceId` - ID инстанса для AWS Console
+
+## Проверка доступности
+
+### С внешней сети (телефон LTE):
+```bash
+# Проверка HTTP (должен отвечать 200/301/403)
+curl -I http://your-domain.com
+
+# Проверка HTTPS (после установки TLS)
+curl -kI https://your-domain.com
+```
+
+### С EC2 инстанса:
+```bash
+# Проверка слушающих портов
+sudo ss -lntp | egrep ':80|:443'
+```
 
 ## Логи
 
