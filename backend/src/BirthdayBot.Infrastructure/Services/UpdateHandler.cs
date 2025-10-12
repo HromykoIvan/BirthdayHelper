@@ -107,8 +107,15 @@ public sealed class UpdateHandler : IUpdateHandler
 
     private async Task HandleTextMessageAsync(Message msg, CancellationToken ct)
     {
-        var chatId = msg.Chat.Id;
+        if (msg is null) return;
+
+        // Безопасный chatId из входящего сообщения
+        var chatId = msg.Chat?.Id ?? msg.From?.Id ?? 0;
+        if (chatId == 0) return;
+
         var text = msg.Text!.Trim();
+
+        // Получаем или создаем пользователя после того, как определили chatId
         var user = await EnsureUser(msg.From!, ct);
 
         if (text.StartsWith("/start", StringComparison.OrdinalIgnoreCase) ||
@@ -120,9 +127,16 @@ public sealed class UpdateHandler : IUpdateHandler
 
         if (text.StartsWith("/add_birthday", StringComparison.OrdinalIgnoreCase))
         {
-            // Запуск мастер-диалога добавления дня рождения.
-            // Подбери нужную тебе сигнатуру, если у твоего класса она другая:
-            await _wizard.TryHandleAsync(new Update { Message = new Message { Chat = new Chat { Id = chatId }, From = new Telegram.Bot.Types.User { Id = user.TelegramUserId } } }, ct);
+            // Запуск мастер-диалога добавления дня рождения с правильным chatId
+            await _wizard.TryHandleAsync(new Update 
+            { 
+                Message = new Message 
+                { 
+                    Chat = new Chat { Id = chatId }, 
+                    From = msg.From,
+                    Text = text
+                } 
+            }, ct);
             return;
         }
 

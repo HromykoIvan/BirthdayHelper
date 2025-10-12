@@ -1,0 +1,17 @@
+[Unit]
+Description=Birthday Bot stack
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/birthday
+Environment=REGION=eu-central-1
+Environment=DOMAIN=bday-bot.duckdns.org
+ExecStartPre=/usr/bin/bash -lc 'chmod +x ops/env-from-secrets.sh ops/deploy.sh'
+ExecStart=/usr/bin/bash -lc './ops/deploy.sh'
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+

@@ -78,7 +78,7 @@
         DeliveryLog: UserId
 
     Наблюдаемость/Безопасность
-        Health: /health/live, /health/ready, /health/startup
+        Health: /health/live, /health/ready, /health/startup, /healthz
         Prometheus: /metrics (через OpenTelemetry exporter)
         Rate limiting webhook: фиксированное окно 60 req/min/IP
         NetworkPolicy: разрешает egress к DNS, Mongo и TCP/443 в интернет (для Telegram). У Telegram плавающие IP — точное ограничение по IP невозможно без egress-gateway
@@ -101,6 +101,18 @@
         aws secretsmanager create-secret --name "birthday-bot/duckdns-token" \
           --secret-string "YOUR_DUCKDNS_TOKEN"
         ```
+
+    CI/CD автоматизация
+        При push в master автоматически:
+        1. Собирается Docker образ из Dockerfile
+        2. Пушится в ECR (birthday-bot:latest)
+        3. Через SSM отправляется команда на EC2 инстанс
+        4. На инстансе выполняется ops/deploy.sh:
+           - Обновляются секреты из AWS Secrets Manager
+           - Подтягивается свежий образ из ECR
+           - Перезапускается docker compose с обновленным .env
+        
+        Все управляется через .github/workflows/deploy.yml
 
     Лицензия
         MIT
