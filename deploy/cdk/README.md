@@ -81,14 +81,13 @@ npm run destroy
 ## Что создается
 
 1. **Security Group** - разрешает HTTP/HTTPS трафик (порт 80 для ACME challenge, 443 для webhook)
-2. **IAM Role** - с правами на ECR, SSM и CloudWatch
-3. **EC2 Instance** - с предустановленным Docker и Caddy
-4. **User Data Script** - автоматически:
-   - Устанавливает Docker и Caddy
-   - Логинится в ECR
-   - Получает секреты из SSM
-   - Запускает контейнер Birthday Bot
-   - Настраивает Caddy для HTTPS
+2. **IAM Role** - с правами на ECR, Secrets Manager и CloudWatch
+3. **EC2 Instance** - с предустановленным Docker и Docker Compose
+4. **Автоматизация** - система скриптов:
+   - Получение секретов из AWS Secrets Manager
+   - Автоматическое обновление IP в DuckDNS
+   - Docker Compose для запуска API + Caddy
+   - Автоматический HTTPS через Let's Encrypt
 
 ## Мониторинг
 
@@ -116,11 +115,15 @@ sudo ss -lntp | egrep ':80|:443'
 ## Логи
 
 ```bash
-# Логи Birthday Bot
-sudo journalctl -u birthday-bot -f
+# Логи Birthday Bot сервиса (Docker Compose)
+sudo journalctl -u birthday -f
 
-# Логи Caddy
-sudo journalctl -u caddy -f
+# Логи DuckDNS обновления
+sudo journalctl -u duckdns -f
+
+# Логи Docker контейнеров
+sudo docker logs birthday_api_1
+sudo docker logs birthday_caddy_1
 
 # Логи Docker
 sudo journalctl -u docker -f
@@ -131,16 +134,17 @@ sudo journalctl -u docker -f
 ### Проверка статуса сервисов
 
 ```bash
-sudo systemctl status birthday-bot
-sudo systemctl status caddy
+sudo systemctl status birthday
+sudo systemctl status duckdns.timer
 sudo systemctl status docker
+sudo docker ps
 ```
 
 ### Перезапуск сервисов
 
 ```bash
-sudo systemctl restart birthday-bot
-sudo systemctl restart caddy
+sudo systemctl restart birthday
+sudo systemctl restart duckdns.timer
 ```
 
 ### Проверка конфигурации Caddy

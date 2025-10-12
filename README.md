@@ -91,15 +91,15 @@
         TZ — используй точные ID из tzdb (например, Europe/Warsaw). В /settings можно прислать любой валидный ID.
         Состояние диалогов — в MVP хранится в памяти. Для продакшен-масштабирования добавь Redis (stateful).
     
-    SSM Parameters
-        Создайте параметры в AWS Systems Manager:
+    AWS Secrets Manager
+        Создайте секреты в AWS Secrets Manager:
         ```bash
-        aws ssm put-parameter --name "/birthday-bot/BOT_TOKEN" \
-          --value "YOUR_TOKEN" --type "SecureString"
-        aws ssm put-parameter --name "/birthday-bot/WEBHOOK_SECRET" \
-          --value "YOUR_SECRET" --type "SecureString"
-        aws ssm put-parameter --name "/birthday-bot/MONGODB_URI" \
-          --value "mongodb://..." --type "SecureString"
+        aws secretsmanager create-secret --name "birthday-bot/telegram-token" \
+          --secret-string "YOUR_TOKEN"
+        aws secretsmanager create-secret --name "birthday-bot/mongo-url" \
+          --secret-string "mongodb://..."
+        aws secretsmanager create-secret --name "birthday-bot/duckdns-token" \
+          --secret-string "YOUR_DUCKDNS_TOKEN"
         ```
 
     Лицензия

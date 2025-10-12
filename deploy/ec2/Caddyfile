@@ -1,0 +1,17 @@
+{
+  email hello@example.com
+  # auto_https enable  # по умолчанию включен
+}
+
+{$DOMAIN} {
+  encode zstd gzip
+  # HTTP-01 challenge пройдёт автоматически на 80/tcp
+  reverse_proxy api:8080
+
+  @health {
+    path /healthz
+  }
+  handle @health {
+    respond "ok" 200
+  }
+}

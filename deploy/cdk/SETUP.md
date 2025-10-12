@@ -91,29 +91,31 @@ CDK автоматически создает Security Group с правильн
 4. Нажмите **New repository variable**
 5. Добавьте каждую переменную из таблицы выше
 
-## 3. SSM Parameters
+## 3. AWS Secrets Manager
 
-Создайте следующие SSM параметры в AWS:
+Создайте следующие секреты в AWS Secrets Manager:
 
 ```bash
-# Bot Token
-aws ssm put-parameter \
-  --name "/birthday-bot/BOT_TOKEN" \
-  --value "YOUR_TELEGRAM_BOT_TOKEN" \
-  --type "SecureString"
+# Telegram Bot Token
+aws secretsmanager create-secret \
+  --name "birthday-bot/telegram-token" \
+  --description "Telegram Bot Token" \
+  --secret-string "YOUR_TELEGRAM_BOT_TOKEN"
 
-# Webhook Secret (опционально)
-aws ssm put-parameter \
-  --name "/birthday-bot/WEBHOOK_SECRET" \
-  --value "YOUR_WEBHOOK_SECRET" \
-  --type "SecureString"
+# MongoDB Connection String
+aws secretsmanager create-secret \
+  --name "birthday-bot/mongo-url" \
+  --description "MongoDB Connection URL" \
+  --secret-string "mongodb://your-mongo-connection-string"
 
-# MongoDB URI
-aws ssm put-parameter \
-  --name "/birthday-bot/MONGODB_URI" \
-  --value "mongodb://your-mongo-connection-string" \
-  --type "SecureString"
+# DuckDNS Token (для автоматического обновления IP)
+aws secretsmanager create-secret \
+  --name "birthday-bot/duckdns-token" \
+  --description "DuckDNS Token for IP updates" \
+  --secret-string "YOUR_DUCKDNS_TOKEN"
 ```
+
+**Примечание:** CDK автоматически дает EC2 права на чтение всех секретов с префиксом `birthday-bot/*` для максимальной безопасности.
 
 ## 4. ECR Repository
 
