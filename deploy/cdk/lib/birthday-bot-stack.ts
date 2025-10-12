@@ -22,16 +22,13 @@ export class BirthdayBotStack extends Stack {
 
     const { domainName, ecrRepo, imageTag, parameterPaths } = props;
 
-    // --- ECR Repository ---
-    const repository = new ecr.Repository(this, 'BirthdayBotRepo', {
-      repositoryName: ecrRepo,
-      imageScanOnPush: true,
-      lifecycleRules: [{
-        maxImageCount: 20,
-        description: 'Keep only 20 latest images'
-      }],
-      removalPolicy: RemovalPolicy.RETAIN
-    });
+    // --- ECR Repository (import existing) ---
+    // Используем существующий репозиторий, созданный через GitHub Actions
+    const repository = ecr.Repository.fromRepositoryName(
+      this,
+      'BirthdayBotRepo',
+      ecrRepo
+    );
 
     // --- Security Groups ---
     const vpc = ec2.Vpc.fromLookup(this, 'DefaultVpc', { isDefault: true });
@@ -141,7 +138,7 @@ export class BirthdayBotStack extends Stack {
       // Устанавливаем переменные окружения
       `echo "REGION=${this.region}" | sudo tee -a /etc/environment`,
       `echo "DOMAIN=${domainName}" | sudo tee -a /etc/environment`,
-      `echo "ECR_REPO=${repoUri}" | sudo tee -a /etc/environment`,
+      `echo "ECR_REPO=${ecrRepo}" | sudo tee -a /etc/environment`,
       'source /etc/environment',
 
       // Устанавливаем systemd unit

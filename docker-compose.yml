@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   app:
-    image: ${ECR_REPO}:latest
+    image: ${ACC_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPO}:latest
     restart: unless-stopped
     env_file:
       - .env
