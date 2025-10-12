@@ -1,6 +1,6 @@
 import {
   Stack, StackProps, CfnOutput, Duration, aws_ec2 as ec2,
-  aws_iam as iam, aws_ssm as ssm
+  aws_iam as iam, aws_ssm as ssm, aws_secretsmanager as secretsmanager
 } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
@@ -10,6 +10,9 @@ type Params = {
   imageTag: string;
   parameterPaths: { botToken: string; webhookSecret: string; mongoUri: string; };
 };
+
+// Константы для секретов
+const SECRET_PATH_PREFIX = 'birthday-bot/';
 
 export class BirthdayBotStack extends Stack {
   constructor(scope: Construct, id: string, props: StackProps & Params) {
@@ -57,6 +60,15 @@ export class BirthdayBotStack extends Stack {
       ]
     }));
 
+    // Права читать секреты из Secrets Manager
+    role.addToPolicy(new iam.PolicyStatement({
+      sid: 'ReadSecretsForBirthdayBot',
+      actions: ['secretsmanager:GetSecretValue'],
+      resources: [
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${SECRET_PATH_PREFIX}*`
+      ]
+    }));
+
     const profile = new iam.CfnInstanceProfile(this, 'InstanceProfile', {
       roles: [role.roleName]
     });
@@ -67,64 +79,39 @@ export class BirthdayBotStack extends Stack {
       cpuType: ec2.AmazonLinuxCpuType.ARM_64
     });
 
-    // --- UserData (Docker + Caddy + запуск контейнера) ---
+    // --- UserData (Docker + установка скриптов + запуск сервисов) ---
+    const repoUri = `${this.account}.dkr.ecr.${this.region}.amazonaws.com/${ecrRepo}`;
+    
     const userData = ec2.UserData.forLinux();
     userData.addCommands(
       'set -euxo pipefail',
       'dnf update -y',
-      'dnf install -y docker awscli jq',
-      "dnf install -y 'dnf-command(copr)'",
-      'dnf copr enable -y @caddy/caddy',
-      'dnf install -y caddy',
+      'dnf install -y docker jq curl unzip',
       'systemctl enable --now docker',
       'usermod -aG docker ec2-user || true',
+
+      // AWS CLI v2 (если не установлен)
+      'if ! command -v aws >/dev/null 2>&1; then',
+      '  curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "/tmp/awscliv2.zip"',
+      '  unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install',
+      'fi',
 
       // логин в ECR
       `aws ecr get-login-password --region ${this.region} | docker login --username AWS --password-stdin ${this.account}.dkr.ecr.${this.region}.amazonaws.com`,
 
-      // достаём секреты из SSM
-      `BOT_TOKEN=$(aws ssm get-parameter --name "${parameterPaths.botToken}" --with-decryption --query Parameter.Value --output text --region ${this.region})`,
-      `WEBHOOK_SECRET=$(aws ssm get-parameter --name "${parameterPaths.webhookSecret}" --with-decryption --query Parameter.Value --output text --region ${this.region} || echo "")`,
-      `MONGODB_URI=$(aws ssm get-parameter --name "${parameterPaths.mongoUri}" --with-decryption --query Parameter.Value --output text --region ${this.region})`,
+      // создаем каталоги и устанавливаем переменные окружения
+      'sudo mkdir -p /opt/birthday/bootstrap && sudo chown ec2-user:ec2-user /opt/birthday',
+      `echo "ECR_IMAGE=${repoUri}" | sudo tee -a /etc/environment`,
+      `echo "IMAGE_TAG=${imageTag}" | sudo tee -a /etc/environment`,
+      `echo "DOMAIN_NAME=${domainName}" | sudo tee -a /etc/environment`,
+      'source /etc/environment',
 
-      'cat >/etc/birthday-bot.env <<EOF',
-      'TELEGRAM_BOT_TOKEN=$BOT_TOKEN',
-      'TELEGRAM_WEBHOOK_SECRET=$WEBHOOK_SECRET',
-      'MONGODB_URI=$MONGODB_URI',
-      'ASPNETCORE_ENVIRONMENT=Production',
-      'EOF',
-      'chmod 600 /etc/birthday-bot.env',
+      // загружаем скрипт установки
+      'curl -fsSL "https://raw.githubusercontent.com/HromykoIvan/BirthdayHelper/master/deploy/ec2/install.sh" -o /opt/birthday/bootstrap/install.sh',
+      'chmod +x /opt/birthday/bootstrap/install.sh',
 
-      // systemd unit
-      'cat >/etc/systemd/system/birthday-bot.service <<EOF',
-      '[Unit]',
-      'Description=BirthdayBot container',
-      'After=docker.service',
-      'Requires=docker.service',
-      '',
-      '[Service]',
-      'EnvironmentFile=/etc/birthday-bot.env',
-      'Restart=always',
-      `ExecStartPre=/usr/bin/docker pull ${this.account}.dkr.ecr.${this.region}.amazonaws.com/${ecrRepo}:${imageTag}`,
-      `ExecStart=/usr/bin/docker run --rm --name birthday-bot -p 8080:8080 --env-file /etc/birthday-bot.env ${this.account}.dkr.ecr.${this.region}.amazonaws.com/${ecrRepo}:${imageTag}`,
-      'ExecStop=/usr/bin/docker stop birthday-bot',
-      '',
-      '[Install]',
-      'WantedBy=multi-user.target',
-      'EOF',
-
-      // Caddyfile
-      'mkdir -p /etc/caddy',
-      `cat >/etc/caddy/Caddyfile <<EOF
-${domainName} {
-  encode gzip
-  reverse_proxy 127.0.0.1:8080
-}
-EOF`,
-
-      'systemctl daemon-reload',
-      'systemctl enable --now birthday-bot',
-      'systemctl enable --now caddy'
+      // устанавливаем наши скрипты и сервисы
+      'sudo bash /opt/birthday/bootstrap/install.sh'
     );
 
     // --- EC2 Instance ---
