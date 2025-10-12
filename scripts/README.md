@@ -1,4 +1,21 @@
-# MongoDB SSM Tunnel Scripts (Windows)
+# DevOps Scripts
+
+Collection of scripts for secure access and deployment via AWS SSM Session Manager.
+
+## Scripts Overview
+
+### MongoDB Access (Windows - PowerShell)
+- `mongo-tunnel-ssm.ps1` - Open SSM port forwarding to MongoDB
+- `mongo-uri.ps1` - Get MongoDB connection string
+- `mongo-compass.ps1` - Auto-open MongoDB Compass
+
+### Deployment (Linux/macOS - Bash)
+- `resolve-instance.sh` - Resolve Bot EC2 Instance ID
+- `rollout.sh` - Deploy Docker image to EC2 via SSM
+
+---
+
+# MongoDB SSM Tunnel (Windows)
 
 PowerShell scripts for secure MongoDB access via AWS SSM Session Manager port forwarding.
 
@@ -177,4 +194,102 @@ taskkill /PID <PID> /F
 ❌ **Don't**: Commit AWS credentials to git
 ❌ **Don't**: Open MongoDB port (27017) in Security Groups
 ❌ **Don't**: Share connection strings in chat/email
+
+---
+
+# Deployment Scripts (Linux/macOS)
+
+Bash scripts for deploying Docker images to EC2 via SSM.
+
+## Prerequisites
+
+- AWS CLI v2
+- Session Manager Plugin
+- Bash shell (Linux/macOS/WSL)
+- AWS credentials configured
+
+## Usage
+
+### Resolve Instance ID
+
+```bash
+./scripts/resolve-instance.sh
+```
+
+Output: `i-0abc123def456789`
+
+This script:
+1. First tries SSM parameter: `/birthday-bot/instance-id`
+2. Falls back to EC2 tag: `Name=BirthdayBotStack/BotInstance`
+
+### Deploy Image
+
+```bash
+# Deploy latest tag
+./scripts/rollout.sh
+
+# Deploy specific tag
+./scripts/rollout.sh v1.2.3
+
+# Deploy with full URI
+./scripts/rollout.sh 123456789012.dkr.ecr.eu-central-1.amazonaws.com/birthday-helper:sha-abc123
+```
+
+The script will:
+1. Resolve the EC2 instance ID
+2. Login to ECR
+3. Pull the specified image
+4. Restart the container
+5. Clean up old images
+
+### Environment Variables
+
+```bash
+# Change AWS region
+export AWS_REGION=us-east-1
+
+# Change ECR repository name
+export ECR_REPO=my-custom-repo
+
+# Run deployment
+./scripts/rollout.sh
+```
+
+## Make Scripts Executable
+
+```bash
+chmod +x scripts/resolve-instance.sh
+chmod +x scripts/rollout.sh
+```
+
+## Integration with CI/CD
+
+These scripts are used by GitHub Actions workflows:
+- `.github/workflows/build-and-push.yml` - Uses same logic for rollout job
+- Ensures consistent deployment behavior between local and CI/CD
+
+## Troubleshooting
+
+### "Instance not found"
+Check that:
+- EC2 instance is running
+- SSM parameter `/birthday-bot/instance-id` exists OR
+- EC2 tag `Name=BirthdayBotStack/BotInstance` is set
+
+### "Command execution failed"
+View command output:
+```bash
+# Get command ID from script output
+aws ssm get-command-invocation \
+  --command-id <COMMAND_ID> \
+  --instance-id <INSTANCE_ID> \
+  --region eu-central-1
+```
+
+### "Permission denied"
+Ensure your IAM user/role has:
+- `ssm:SendCommand`
+- `ssm:GetCommandInvocation`
+- `ec2:DescribeInstances`
+- `ssm:GetParameter`
 

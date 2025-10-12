@@ -213,16 +213,28 @@ export class BirthdayBotStack extends Stack {
     });
     (instance.node.defaultChild as ec2.CfnInstance).iamInstanceProfile = profile.ref;
 
-    // --- SSM Parameter for GitHub Actions ---
+    // --- SSM Parameters for GitHub Actions ---
+    // Primary parameter (used by workflows)
     new ssm.StringParameter(this, 'BotInstanceIdParam', {
-      parameterName: '/birthday-bot/bot-instance-id',
+      parameterName: '/birthday-bot/instance-id',
       stringValue: instance.instanceId,
       description: 'Bot EC2 Instance ID for GitHub Actions deployment'
+    });
+    
+    // Legacy parameter name for backward compatibility
+    new ssm.StringParameter(this, 'BotInstanceIdParamLegacy', {
+      parameterName: '/birthday-bot/bot-instance-id',
+      stringValue: instance.instanceId,
+      description: 'Bot EC2 Instance ID (legacy name)'
     });
 
     // --- Outputs ---
     new CfnOutput(this, 'PublicIp', { value: instance.instancePublicIp });
-    new CfnOutput(this, 'InstanceId', { value: instance.instanceId });
+    new CfnOutput(this, 'InstanceId', { 
+      value: instance.instanceId,
+      exportName: 'BirthdayBot-InstanceId',
+      description: 'Bot EC2 Instance ID'
+    });
     new CfnOutput(this, 'MongoInstanceId', { value: mongoInstance.instanceId });
     new CfnOutput(this, 'MongoPrivateIp', { value: mongoInstance.instancePrivateIp });
     new CfnOutput(this, 'EcrRepoUri', { value: repository.repositoryUri });
