@@ -50,11 +50,28 @@ public static class ServiceCollectionExtensions
 
         // Flow - регистрируем как Scoped для UpdateHandler
         services.AddScoped<AddBirthdayWizardFlow>();
-        services.AddSingleton<ITelegramBotClient>(sp =>
+        
+        // Register Telegram Bot Client - use mock in Development mode
+        var environment = cfg["ASPNETCORE_ENVIRONMENT"] ?? "Production";
+        var useMock = environment == "Development" && cfg.GetValue<bool>("Bot:UseMockClient", false);
+        
+        if (useMock)
         {
-            var bot = sp.GetRequiredService<IOptions<BotOptions>>().Value;
-            return new TelegramBotClient(bot.Token);
-        });
+            services.AddSingleton<MockTelegramBotClient>();
+            services.AddSingleton<ITelegramBotClient>(sp => 
+            {
+                var logger = sp.GetRequiredService<ILogger<MockTelegramBotClient>>();
+                return new MockTelegramBotClientAdapter(logger);
+            });
+        }
+        else
+        {
+            services.AddSingleton<ITelegramBotClient>(sp =>
+            {
+                var bot = sp.GetRequiredService<IOptions<BotOptions>>().Value;
+                return new TelegramBotClient(bot.Token);
+            });
+        }
 
         services.AddHostedService<ReminderHostedService>();
 

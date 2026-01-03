@@ -4,11 +4,17 @@
 #>
 
 param(
-  [string]$Region = $env:AWS_REGION ?? "eu-central-1",
+  [string]$Region,
+  [string]$AwsProfile,
   [string]$SecretName = "birthday-bot/mongo-url"
 )
 
+# Set defaults if not provided
+if (-not $Region) { $Region = if ($env:AWS_REGION) { $env:AWS_REGION } else { "eu-central-1" } }
+if (-not $AwsProfile) { $AwsProfile = if ($env:AWS_PROFILE) { $env:AWS_PROFILE } else { "personal" } }
+
 $raw = aws secretsmanager get-secret-value `
+  --profile $AwsProfile `
   --region $Region --secret-id $SecretName `
   --query 'SecretString' --output text
 

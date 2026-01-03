@@ -5,7 +5,9 @@
   "scripts": {
     "mongo:tunnel": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/mongo-tunnel-ssm.ps1",
     "mongo:uri": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/mongo-uri.ps1",
-    "mongo:compass": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/mongo-compass.ps1"
+    "mongo:compass": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/mongo-compass.ps1",
+    "webhook:local": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/local-webhook.ps1",
+    "webhook:local:ngrok": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/local-webhook.ps1 -TunnelType ngrok"
   },
   "repository": {
     "type": "git",
