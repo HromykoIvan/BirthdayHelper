@@ -37,6 +37,13 @@ var metricsOptions = app.Services.GetRequiredService<IOptions<MetricsOptions>>()
 if (metricsOptions.Enable) app.MapPrometheusScrapingEndpoint(metricsOptions.ScrapeEndpoint);
 
 app.MapTelegramEndpoints();
+
+// Mock messages endpoints (only in Development)
+if (app.Environment.IsDevelopment())
+{
+    app.MapMockMessagesEndpoints();
+}
+
 // root
 app.MapGet("/", () => Results.Ok(new { name = "BirthdayBot", status = "ok" }));
 
