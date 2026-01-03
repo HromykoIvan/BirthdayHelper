@@ -91,6 +91,13 @@ jobs:
               \"export ECR_REPO=\$(grep ECR_REPO /etc/environment 2>/dev/null | cut -d= -f2 || echo 'birthday-helper')\",
               \"# Ensure scripts are executable\",
               \"chmod +x /opt/birthday/ops/env-from-secrets.sh /opt/birthday/ops/deploy.sh || true\",
+              \"# Install systemd service if missing\",
+              \"if [ ! -f /etc/systemd/system/birthday.service ]; then\",
+              \"  echo 'Installing systemd service...'\",
+              \"  cp /opt/birthday/ops/birthday.service /etc/systemd/system/birthday.service\",
+              \"  systemctl daemon-reload\",
+              \"  systemctl enable birthday\",
+              \"fi\",
               \"# Run deployment\",
               \"cd /opt/birthday && bash ./ops/deploy.sh\",
               \"echo '[$(date)] Deployment completed successfully'\"
@@ -144,8 +151,8 @@ jobs:
               --comment "Verify birthday-bot container status" \
               --parameters "commands=[
                 \"cd /opt/birthday\",
-                \"docker compose --env-file .compose.env ps\",
-                \"docker compose --env-file .compose.env logs --tail=20 app || true\"
+                \"sudo docker compose --env-file .compose.env ps\",
+                \"sudo docker compose --env-file .compose.env logs --tail=20 app || true\"
               ]" \
               --region "$AWS_REGION" \
               --query "Command.CommandId" \
