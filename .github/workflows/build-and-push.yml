@@ -188,6 +188,22 @@ jobs:
           elif [ -f docker-compose.yaml ]; then
             COMPOSE_FILE=docker-compose.yaml
           fi
+          if [ -f .env ]; then
+            TELEGRAM_TOKEN=\$(grep '^TELEGRAM_BOT_TOKEN=' .env | tail -n1 | cut -d= -f2- || true)
+            WEBHOOK_SECRET=\$(grep '^TELEGRAM_WEBHOOK_SECRET=' .env | tail -n1 | cut -d= -f2- || true)
+            if [ -n "\$TELEGRAM_TOKEN" ]; then
+              sed -i '/^BOT__TOKEN=/d' .env
+              echo "BOT__TOKEN=\${TELEGRAM_TOKEN}" >> .env
+            fi
+            if [ -n "\$WEBHOOK_SECRET" ]; then
+              sed -i '/^BOT__WEBHOOKSECRET=/d;/^BOT__WEBHOOKSECRETTOKEN=/d' .env
+              echo "BOT__WEBHOOKSECRET=\${WEBHOOK_SECRET}" >> .env
+              echo "BOT__WEBHOOKSECRETTOKEN=\${WEBHOOK_SECRET}" >> .env
+            fi
+            echo "Normalized BOT__* variables in .env"
+          else
+            echo "WARNING: .env not found; BOT__* variables were not normalized"
+          fi
           echo "Pulling image: ${IMG_TAGGED}..."
           docker pull ${IMG_TAGGED} || docker pull ${IMG}
           docker tag ${IMG_TAGGED} ${IMG} 2>/dev/null || true
