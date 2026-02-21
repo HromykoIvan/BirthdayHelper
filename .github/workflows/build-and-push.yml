@@ -156,67 +156,71 @@ jobs:
           echo "::endgroup::"
           
           echo "::group::📤 Sending SSM deployment command"
+          cat > /tmp/rollout_commands.txt <<EOF
+          set -e
+          echo "Starting deployment rollout..."
+          echo "Image: ${IMG_TAGGED}"
+          echo "Commit: ${{ github.sha }}"
+          mkdir -p /opt/birthday
+          cd /opt/birthday
+          echo "Logging into ECR..."
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${ECR}
+          if [ ! -f .compose.env ]; then
+            echo "WARNING: .compose.env not found, creating from environment..."
+            ACC_ID=\$(aws sts get-caller-identity --query Account --output text)
+            echo "ACC_ID=\${ACC_ID}" > .compose.env
+            echo "REGION=${{ env.AWS_REGION }}" >> .compose.env
+            echo "ECR_REPO=${{ env.ECR_REPO }}" >> .compose.env
+            DOMAIN_VAL=\$(grep DOMAIN /etc/environment 2>/dev/null | cut -d= -f2 || echo bday-bot.duckdns.org)
+            echo "DOMAIN=\${DOMAIN_VAL}" >> .compose.env
+            echo "ACME_EMAIL=admin@example.com" >> .compose.env
+            echo "Created .compose.env"
+          fi
+          if [ ! -f docker-compose.yml ]; then
+            echo "ERROR: docker-compose.yml not found in /opt/birthday"
+            exit 1
+          fi
+          echo "Pulling image: ${IMG_TAGGED}..."
+          docker pull ${IMG_TAGGED} || docker pull ${IMG}
+          docker tag ${IMG_TAGGED} ${IMG} 2>/dev/null || true
+          echo "Stopping old container..."
+          docker compose --env-file .compose.env down app || true
+          echo "Starting new container..."
+          docker compose --env-file .compose.env up -d app
+          echo "Cleaning up old images..."
+          docker image prune -f || true
+          sleep 3
+          echo "Checking container status..."
+          docker compose --env-file .compose.env ps app
+          CONTAINER_ID=\$(docker compose --env-file .compose.env ps -q app 2>/dev/null || echo '')
+          if [ -n "\$CONTAINER_ID" ]; then
+            CONTAINER_STATUS=\$(docker inspect --format='{{.State.Status}}' \$CONTAINER_ID 2>/dev/null || echo unknown)
+            if [ "\$CONTAINER_STATUS" != "running" ]; then
+              echo "WARNING: Container status is not running: \$CONTAINER_STATUS"
+              echo "Container logs:"
+              docker compose --env-file .compose.env logs --tail=50 app || true
+            else
+              echo "Container is running"
+            fi
+          else
+            echo "WARNING: Container ID not found"
+          fi
+          echo "Deployment rollout completed"
+          EOF
+
+          PARAMS_JSON=$(python3 - <<'PY'
+          import json
+          with open('/tmp/rollout_commands.txt', encoding='utf-8') as f:
+              commands = [line.rstrip('\n') for line in f if line.strip()]
+          print(json.dumps({"commands": commands}))
+          PY
+          )
+
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$IID" \
             --document-name "AWS-RunShellScript" \
             --comment "Rollout birthday-bot commit: ${{ github.sha }}" \
-            --parameters "commands=[
-              \"set -e\",
-              \"echo Starting deployment rollout...\",
-              \"echo Image: ${IMG_TAGGED}\",
-              \"echo Commit: ${{ github.sha }}\",
-              \"mkdir -p /opt/birthday && cd /opt/birthday\",
-              \"echo 'Logging into ECR...'\",
-              \"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${ECR}\",
-              \"# Ensure .compose.env exists\",
-              \"if [ ! -f .compose.env ]; then\",
-              \"  echo 'WARNING: .compose.env not found, creating from environment...'\",
-              \"  ACC_ID=\\\$(aws sts get-caller-identity --query Account --output text)\",
-              \"  echo ACC_ID=\\\${ACC_ID} > .compose.env\",
-              \"  echo REGION=${{ env.AWS_REGION }} >> .compose.env\",
-              \"  echo ECR_REPO=${{ env.ECR_REPO }} >> .compose.env\",
-              \"  DOMAIN_VAL=\\\$(grep DOMAIN /etc/environment 2>/dev/null | cut -d= -f2 || echo bday-bot.duckdns.org)\",
-              \"  echo DOMAIN=\\\${DOMAIN_VAL} >> .compose.env\",
-              \"  echo ACME_EMAIL=admin@example.com >> .compose.env\",
-              \"  echo 'Created .compose.env'\",
-              \"fi\",
-              \"# Check if docker-compose.yml exists\",
-              \"if [ ! -f docker-compose.yml ]; then\",
-              \"  echo 'ERROR: docker-compose.yml not found in /opt/birthday'\",
-              \"  exit 1\",
-              \"fi\",
-              \"echo 'Pulling image: ${IMG_TAGGED}...'\",
-              \"docker pull ${IMG_TAGGED} || docker pull ${IMG}\",
-              \"# Tag as latest if pulled tagged version\",
-              \"docker tag ${IMG_TAGGED} ${IMG} 2>/dev/null || true\",
-              \"# Stop old container\",
-              \"echo 'Stopping old container...'\",
-              \"docker compose --env-file .compose.env down app || true\",
-              \"echo 'Starting new container...'\",
-              \"docker compose --env-file .compose.env up -d app\",
-              \"# Cleanup old images\",
-              \"echo 'Cleaning up old images...'\",
-              \"docker image prune -f || true\",
-              \"# Wait a bit for container to start\",
-              \"sleep 3\",
-              \"# Check container status\",
-              \"echo 'Checking container status...'\",
-              \"docker compose --env-file .compose.env ps app\",
-              \"CONTAINER_ID=\\\$(docker compose --env-file .compose.env ps -q app 2>/dev/null || echo '')\",
-              \"if [ -n \\\"\\\$CONTAINER_ID\\\" ]; then\",
-              \"  CONTAINER_STATUS=\\\$(docker inspect --format={{.State.Status}} \\\$CONTAINER_ID 2>/dev/null || echo unknown)\",
-              \"  if [ \\\"\\\$CONTAINER_STATUS\\\" != \\\"running\\\" ]; then\",
-              \"    echo 'WARNING: Container status is not running: '\\\$CONTAINER_STATUS\",
-              \"    echo 'Container logs:'\",
-              \"    docker compose --env-file .compose.env logs --tail=50 app || true\",
-              \"  else\",
-              \"    echo '✅ Container is running'\",
-              \"  fi\",
-              \"else\",
-              \"  echo 'WARNING: Container ID not found'\",
-              \"fi\",
-              \"echo Deployment rollout completed\"
-            ]" \
+            --parameters "$PARAMS_JSON" \
             --region "${{ env.AWS_REGION }}" \
             --query "Command.CommandId" \
             --output text)
@@ -317,38 +321,48 @@ jobs:
           echo "Waiting 10 seconds for container to fully start..."
           sleep 10
           
+          cat > /tmp/verify_commands.txt <<'EOF'
+          set -e
+          cd /opt/birthday || exit 1
+          echo "=== Container Status ==="
+          docker compose --env-file .compose.env ps app || true
+          echo
+          echo "=== Container Logs (last 30 lines) ==="
+          docker compose --env-file .compose.env logs --tail=30 app || true
+          echo
+          echo "=== Health Check ==="
+          CONTAINER_ID=$(docker compose --env-file .compose.env ps -q app 2>/dev/null || echo '')
+          if [ -n "$CONTAINER_ID" ]; then
+            HEALTH=$(docker inspect --format='{{.State.Health.Status}}' $CONTAINER_ID 2>/dev/null || echo no-healthcheck)
+            echo "Health status: $HEALTH"
+            if [ "$HEALTH" = "healthy" ]; then
+              echo "Container is healthy"
+            elif [ "$HEALTH" = "starting" ]; then
+              echo "Container healthcheck is starting"
+            elif [ "$HEALTH" = "no-healthcheck" ]; then
+              echo "No healthcheck configured"
+            else
+              echo "Container health status: $HEALTH"
+            fi
+          else
+            echo "Container not found"
+            exit 1
+          fi
+          EOF
+
+          VERIFY_PARAMS_JSON=$(python3 - <<'PY'
+          import json
+          with open('/tmp/verify_commands.txt', encoding='utf-8') as f:
+              commands = [line.rstrip('\n') for line in f if line.strip()]
+          print(json.dumps({"commands": commands}))
+          PY
+          )
+
           VERIFY_CMD_ID=$(aws ssm send-command \
             --instance-ids "$IID" \
             --document-name "AWS-RunShellScript" \
             --comment "Verify birthday-bot container health" \
-            --parameters "commands=[
-              \"set -e\",
-              \"cd /opt/birthday || exit 1\",
-              \"echo '=== Container Status ==='\",
-              \"docker compose --env-file .compose.env ps app || true\",
-              \"echo ''\",
-              \"echo '=== Container Logs (last 30 lines) ==='\",
-              \"docker compose --env-file .compose.env logs --tail=30 app || true\",
-              \"echo ''\",
-              \"echo '=== Health Check ==='\",
-              \"CONTAINER_ID=\\\$(docker compose --env-file .compose.env ps -q app 2>/dev/null || echo '')\",
-              \"if [ -n \\\"\\\$CONTAINER_ID\\\" ]; then\",
-              \"  HEALTH=\\\$(docker inspect --format={{.State.Health.Status}} \\\$CONTAINER_ID 2>/dev/null || echo no-healthcheck)\",
-              \"  echo 'Health status: '\\\$HEALTH\",
-              \"  if [ \\\"\\\$HEALTH\\\" = \\\"healthy\\\" ]; then\",
-              \"    echo '✅ Container is healthy'\",
-              \"  elif [ \\\"\\\$HEALTH\\\" = \\\"starting\\\" ]; then\",
-              \"    echo '⏳ Container healthcheck is starting'\",
-              \"  elif [ \\\"\\\$HEALTH\\\" = \\\"no-healthcheck\\\" ]; then\",
-              \"    echo '⚠️ No healthcheck configured'\",
-              \"  else\",
-              \"    echo '⚠️ Container health status: '\\\$HEALTH\",
-              \"  fi\",
-              \"else\",
-              \"  echo '❌ Container not found'\",
-              \"  exit 1\",
-              \"fi\"
-            ]" \
+            --parameters "$VERIFY_PARAMS_JSON" \
             --region "${{ env.AWS_REGION }}" \
             --query "Command.CommandId" \
             --output text)
