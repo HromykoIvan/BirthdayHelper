@@ -162,14 +162,12 @@ jobs:
             --comment "Rollout birthday-bot commit: ${{ github.sha }}" \
             --parameters "commands=[
               \"set -e\",
-              \"DATE_VAL=\\\$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
-              \"echo \\\"[\\\$DATE_VAL] Starting deployment rollout...\\\"\",
-              \"echo \\\"Image: ${IMG_TAGGED}\\\"\",
-              \"echo \\\"Commit: ${{ github.sha }}\\\"\",
+              \"echo Starting deployment rollout...\",
+              \"echo Image: ${IMG_TAGGED}\",
+              \"echo Commit: ${{ github.sha }}\",
               \"mkdir -p /opt/birthday && cd /opt/birthday\",
               \"echo 'Logging into ECR...'\",
               \"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${ECR}\",
-              \"if [ \\\$? -ne 0 ]; then echo 'ERROR: ECR login failed'; exit 1; fi\",
               \"# Ensure .compose.env exists\",
               \"if [ ! -f .compose.env ]; then\",
               \"  echo 'WARNING: .compose.env not found, creating from environment...'\",
@@ -189,7 +187,6 @@ jobs:
               \"fi\",
               \"echo 'Pulling image: ${IMG_TAGGED}...'\",
               \"docker pull ${IMG_TAGGED} || docker pull ${IMG}\",
-              \"if [ \\\$? -ne 0 ]; then echo 'ERROR: Failed to pull image'; exit 1; fi\",
               \"# Tag as latest if pulled tagged version\",
               \"docker tag ${IMG_TAGGED} ${IMG} 2>/dev/null || true\",
               \"# Stop old container\",
@@ -197,7 +194,6 @@ jobs:
               \"docker compose --env-file .compose.env down app || true\",
               \"echo 'Starting new container...'\",
               \"docker compose --env-file .compose.env up -d app\",
-              \"if [ \\\$? -ne 0 ]; then echo 'ERROR: Failed to start container'; exit 1; fi\",
               \"# Cleanup old images\",
               \"echo 'Cleaning up old images...'\",
               \"docker image prune -f || true\",
@@ -219,8 +215,7 @@ jobs:
               \"else\",
               \"  echo 'WARNING: Container ID not found'\",
               \"fi\",
-              \"DATE_VAL=\\\$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
-              \"echo \\\"[\\\$DATE_VAL] Deployment rollout completed\\\"\"
+              \"echo Deployment rollout completed\"
             ]" \
             --region "${{ env.AWS_REGION }}" \
             --query "Command.CommandId" \
