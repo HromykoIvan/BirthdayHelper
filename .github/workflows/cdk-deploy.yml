@@ -14,33 +14,39 @@ permissions:
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-  AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }} # твоя OIDC-роль
+  AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
   DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
   ECR_REPO: ${{ vars.ECR_REPO }}
-  IMAGE_TAG: latest
+  IMAGE_TAG: ${{ github.sha }}
 
 jobs:
   cdk:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Configure AWS (OIDC)
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Install CDK deps
+      - name: Install CDK dependencies
         working-directory: deploy/cdk
         run: |
+          echo "::group::📦 Installing CDK dependencies"
+          echo "[$(date -u +'%Y-%m-%d %H:%M:%S UTC')] Running npm ci..."
           npm ci
+          echo "[$(date -u +'%Y-%m-%d %H:%M:%S UTC')] Dependencies installed"
+          echo "::endgroup::"
 
-      - name: Ensure CDK bootstrap exists (run only if needed)
+      - name: Ensure CDK bootstrap exists
         working-directory: deploy/cdk
         env:
           STACK: CDKToolkit
@@ -48,14 +54,20 @@ jobs:
           AWS_REGION: ${{ env.AWS_REGION }}
         run: |
           set -e
+          echo "::group::🚀 Checking CDK bootstrap"
+          echo "[$(date -u +'%Y-%m-%d %H:%M:%S UTC')] Checking if CDK is bootstrapped in $AWS_REGION..."
+          
           if aws cloudformation describe-stacks --stack-name "$STACK" --region "$AWS_REGION" >/dev/null 2>&1; then
-            echo "CDK already bootstrapped in $AWS_REGION"
+            echo "✅ CDK already bootstrapped in $AWS_REGION"
           else
-            echo "CDK not bootstrapped, running bootstrap..."
+            echo "⚠️ CDK not bootstrapped, running bootstrap..."
+            echo "[$(date -u +'%Y-%m-%d %H:%M:%S UTC')] Bootstrapping CDK for account $AWS_ACCOUNT_ID in region $AWS_REGION"
             npx cdk bootstrap aws://$AWS_ACCOUNT_ID/$AWS_REGION
+            echo "✅ CDK bootstrap completed"
           fi
+          echo "::endgroup::"
 
-      - name: CDK deploy
+      - name: CDK deploy infrastructure
         working-directory: deploy/cdk
         env:
           CDK_DEFAULT_ACCOUNT: ${{ env.AWS_ACCOUNT_ID }}
@@ -63,11 +75,48 @@ jobs:
           DOMAIN_NAME: ${{ env.DOMAIN_NAME }}
           ECR_REPO: ${{ env.ECR_REPO }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
-        run: npm run deploy
-
-      - name: Set mongo connection string secret
         run: |
-          aws secretsmanager put-secret-value \
-            --region ${{ env.AWS_REGION }} \
-            --secret-id birthday-bot/mongo-url \
-            --secret-string 'mongodb://mongo.svc.local:27017/birthdaybot'
+          echo "::group::🏗️ Deploying CDK stack"
+          echo "[$(date -u +'%Y-%m-%d %H:%M:%S UTC')] Starting CDK deployment..."
+          echo "Account: $CDK_DEFAULT_ACCOUNT"
+          echo "Region: $CDK_DEFAULT_REGION"
+          echo "Domain: $DOMAIN_NAME"
+          echo "ECR Repository: $ECR_REPO"
+          echo "Image Tag: $IMAGE_TAG"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo ""
+          
+          npm run deploy
+          
+          echo ""
+          echo "[$(date -u +'%Y-%m-%d %H:%M:%S UTC')] CDK deployment completed"
+          echo "::endgroup::"
+
+      - name: Set MongoDB connection string secret
+        run: |
+          echo "::group::🔐 Setting MongoDB secret"
+          echo "[$(date -u +'%Y-%m-%d %H:%M:%S UTC')] Updating MongoDB connection string secret..."
+          
+          SECRET_VALUE='mongodb://mongo.svc.local:27017/birthdaybot'
+          SECRET_ID='birthday-bot/mongo-url'
+          
+          # Check if secret exists
+          if aws secretsmanager describe-secret --secret-id "$SECRET_ID" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+            echo "Secret exists, updating value..."
+            aws secretsmanager put-secret-value \
+              --region "${{ env.AWS_REGION }}" \
+              --secret-id "$SECRET_ID" \
+              --secret-string "$SECRET_VALUE"
+            echo "✅ Secret updated successfully"
+          else
+            echo "Secret does not exist, creating..."
+            aws secretsmanager create-secret \
+              --region "${{ env.AWS_REGION }}" \
+              --name "$SECRET_ID" \
+              --secret-string "$SECRET_VALUE" \
+              --description "MongoDB connection string for birthday-bot"
+            echo "✅ Secret created successfully"
+          fi
+          
+          echo "[$(date -u +'%Y-%m-%d %H:%M:%S UTC')] MongoDB secret operation completed"
+          echo "::endgroup::"

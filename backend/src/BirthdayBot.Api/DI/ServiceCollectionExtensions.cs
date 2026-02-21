@@ -11,7 +11,6 @@ using Telegram.Bot;
 using BirthdayBot.Application.Services;
 using BirthdayBot.Infrastructure.Sessions;
 using BirthdayBot.Infrastructure.Geo;
-using Microsoft.Extensions.Caching.Memory;
 using BirthdayBot.Infrastructure.Flows;
 
 namespace BirthdayBot.Api.DI;
