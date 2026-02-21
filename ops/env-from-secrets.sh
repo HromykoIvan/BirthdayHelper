@@ -10,6 +10,7 @@ get_secret () {
 
 TELEGRAM_TOKEN="$(get_secret birthday-bot/telegram-token)"
 MONGO_URI="$(get_secret birthday-bot/mongo-url)"
+WEBHOOK_SECRET="$(get_secret birthday-bot/webhook-secret || echo '')"
 DUCKDNS_TOKEN="$(get_secret birthday-bot/duckdns-token || echo '')"
 DB_NAME="${MONGO_URI##*/}"
 : "${DB_NAME:=birthdays}"
@@ -19,9 +20,13 @@ ASPNETCORE_URLS=http://0.0.0.0:8080
 
 # Telegram (все популярные ключи)
 TELEGRAM_BOT_TOKEN=${TELEGRAM_TOKEN}
+BOT__TOKEN=${TELEGRAM_TOKEN}
 Telegram__BotToken=${TELEGRAM_TOKEN}
 Telegram__Token=${TELEGRAM_TOKEN}
 BotConfiguration__Token=${TELEGRAM_TOKEN}
+TELEGRAM_WEBHOOK_SECRET=${WEBHOOK_SECRET}
+BOT__WEBHOOKSECRET=${WEBHOOK_SECRET}
+BOT__WEBHOOKSECRETTOKEN=${WEBHOOK_SECRET}
 
 # Mongo
 Mongo__ConnectionString=${MONGO_URI}
