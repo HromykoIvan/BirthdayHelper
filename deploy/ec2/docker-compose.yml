@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   api:
     image: ${ECR_IMAGE:-none}:${IMAGE_TAG:-latest}

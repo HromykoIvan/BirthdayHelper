@@ -1,7 +1,3 @@
-{
-  email {$ACME_EMAIL}
-}
-
 {$DOMAIN} {
   @tg path /telegram/webhook
   reverse_proxy @tg app:8080
