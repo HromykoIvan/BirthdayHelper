@@ -10,6 +10,7 @@ get_secret () {
 
 TELEGRAM_TOKEN="$(get_secret birthday-bot/telegram-token)"
 MONGO_URI="$(get_secret birthday-bot/mongo-url)"
+DUCKDNS_TOKEN="$(get_secret birthday-bot/duckdns-token || echo '')"
 DB_NAME="${MONGO_URI##*/}"
 : "${DB_NAME:=birthdays}"
 
@@ -31,6 +32,9 @@ MONGO_DBNAME=${DB_NAME}
 # Domain and certificates
 DOMAIN=${DOMAIN}
 ACME_EMAIL=you@example.com
+
+# DuckDNS (optional, for dynamic DNS updates)
+DUCKDNS_TOKEN=${DUCKDNS_TOKEN}
 ENV
 
 echo "[ok] .env updated"
