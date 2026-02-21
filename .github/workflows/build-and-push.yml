@@ -159,7 +159,7 @@ jobs:
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$IID" \
             --document-name "AWS-RunShellScript" \
-            --comment "Rollout birthday-bot ${IMG_TAGGED} (commit: ${{ github.sha }})" \
+            --comment "Rollout birthday-bot commit: ${{ github.sha }}" \
             --parameters "commands=[
               \"set -e\",
               \"echo '[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Starting deployment rollout...'\",
