@@ -190,21 +190,21 @@ jobs:
           docker pull ${IMG_TAGGED} || docker pull ${IMG}
           docker tag ${IMG_TAGGED} ${IMG} 2>/dev/null || true
           echo "Stopping old container..."
-          docker compose -f ${COMPOSE_FILE} --env-file .compose.env down app || true
+          docker compose -f \${COMPOSE_FILE} --env-file .compose.env down app || true
           echo "Starting new container..."
-          docker compose -f ${COMPOSE_FILE} --env-file .compose.env up -d app
+          docker compose -f \${COMPOSE_FILE} --env-file .compose.env up -d app
           echo "Cleaning up old images..."
           docker image prune -f || true
           sleep 3
           echo "Checking container status..."
-          docker compose -f ${COMPOSE_FILE} --env-file .compose.env ps app
-          CONTAINER_ID=\$(docker compose -f ${COMPOSE_FILE} --env-file .compose.env ps -q app 2>/dev/null || echo '')
+          docker compose -f \${COMPOSE_FILE} --env-file .compose.env ps app
+          CONTAINER_ID=\$(docker compose -f \${COMPOSE_FILE} --env-file .compose.env ps -q app 2>/dev/null || echo '')
           if [ -n "\$CONTAINER_ID" ]; then
             CONTAINER_STATUS=\$(docker inspect --format='{{.State.Status}}' \$CONTAINER_ID 2>/dev/null || echo unknown)
             if [ "\$CONTAINER_STATUS" != "running" ]; then
               echo "WARNING: Container status is not running: \$CONTAINER_STATUS"
               echo "Container logs:"
-              docker compose -f ${COMPOSE_FILE} --env-file .compose.env logs --tail=50 app || true
+              docker compose -f \${COMPOSE_FILE} --env-file .compose.env logs --tail=50 app || true
             else
               echo "Container is running"
             fi
