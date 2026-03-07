@@ -8,9 +8,16 @@ UNIFIED_SECRET=$(aws secretsmanager get-secret-value \
   --region "$REGION" \
   --secret-id "birthday-bot/all-config" \
   --query 'SecretString' \
-  --output text 2>/dev/null || echo "")
+  --output text 2>&1) || true
 
-if [ -n "$UNIFIED_SECRET" ]; then
+# Check if we got an error (starts with "An error occurred")
+if echo "$UNIFIED_SECRET" | grep -q "An error occurred"; then
+  echo "[info] Unified secret 'birthday-bot/all-config' not found or not accessible, using individual secrets" >&2
+  UNIFIED_SECRET=""
+fi
+
+if [ -n "$UNIFIED_SECRET" ] && [ "$UNIFIED_SECRET" != "None" ]; then
+  echo "[info] Using unified secret 'birthday-bot/all-config'" >&2
   # Parse JSON from unified secret
   if command -v jq >/dev/null 2>&1; then
     TELEGRAM_TOKEN=$(echo "$UNIFIED_SECRET" | jq -r '.telegram_token')
@@ -26,6 +33,7 @@ if [ -n "$UNIFIED_SECRET" ]; then
   fi
 else
   # Fallback: read from individual secrets (backward compatibility)
+  echo "[info] Reading from individual secrets (fallback mode)" >&2
   get_secret () {
     aws secretsmanager get-secret-value --region "$REGION" --secret-id "$1" \
       --query 'SecretString' --output text
