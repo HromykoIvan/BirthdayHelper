@@ -440,15 +440,35 @@ jobs:
             --output text)
           
           echo "Verification command ID: $VERIFY_CMD_ID"
-          sleep 5
           
-          VERIFY_STATUS=$(aws ssm get-command-invocation \
-            --command-id "$VERIFY_CMD_ID" \
-            --instance-id "$IID" \
-            --region "${{ env.AWS_REGION }}" \
-            --query 'Status' \
-            --output text 2>/dev/null || echo "Unknown")
-          VERIFY_STATUS=$(echo "$VERIFY_STATUS" | tr -d '\r' | xargs)
+          # Poll for SSM command completion (max 3 minutes)
+          TIMEOUT=180
+          ELAPSED=0
+          VERIFY_STATUS="InProgress"
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+            VERIFY_STATUS=$(aws ssm get-command-invocation \
+              --command-id "$VERIFY_CMD_ID" \
+              --instance-id "$IID" \
+              --region "${{ env.AWS_REGION }}" \
+              --query 'Status' \
+              --output text 2>/dev/null || echo "InProgress")
+            VERIFY_STATUS=$(echo "$VERIFY_STATUS" | tr -d '\r' | xargs)
+            
+            if [ "$VERIFY_STATUS" = "Success" ]; then
+              echo "✅ Health verification passed"
+              break
+            elif [ "$VERIFY_STATUS" = "Failed" ] || [ "$VERIFY_STATUS" = "Cancelled" ] || [ "$VERIFY_STATUS" = "TimedOut" ]; then
+              echo "❌ Health verification ended with status: $VERIFY_STATUS"
+              break
+            fi
+            echo "[$(date -u +'%Y-%m-%d %H:%M:%S UTC')] Waiting for health check... (${ELAPSED}s elapsed, status: $VERIFY_STATUS)"
+          done
+          
+          if [ $ELAPSED -ge $TIMEOUT ]; then
+            echo "⚠️ WARNING: Timeout waiting for health verification (${TIMEOUT}s)"
+          fi
 
           VERIFY_STDOUT=$(aws ssm get-command-invocation \
             --command-id "$VERIFY_CMD_ID" \
@@ -457,9 +477,22 @@ jobs:
             --query 'StandardOutputContent' \
             --output text 2>/dev/null || true)
           
+          VERIFY_STDERR=$(aws ssm get-command-invocation \
+            --command-id "$VERIFY_CMD_ID" \
+            --instance-id "$IID" \
+            --region "${{ env.AWS_REGION }}" \
+            --query 'StandardErrorContent' \
+            --output text 2>/dev/null || true)
+          
           echo "Verification status: $VERIFY_STATUS"
           echo ""
+          echo "=== Verification Output ==="
           echo "$VERIFY_STDOUT"
+          if [ -n "$VERIFY_STDERR" ] && [ "$VERIFY_STDERR" != "None" ]; then
+            echo ""
+            echo "=== Verification Errors ==="
+            echo "$VERIFY_STDERR"
+          fi
           echo "::endgroup::"
           
           if [ "$VERIFY_STATUS" != "Success" ]; then
