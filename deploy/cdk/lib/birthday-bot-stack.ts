@@ -84,6 +84,8 @@ export class BirthdayBotStack extends Stack {
     repository.grantPull(role);
 
     // Permissions to read secrets from Secrets Manager
+    // Note: AWS Secrets Manager ARN format: arn:aws:secretsmanager:region:account:secret:name-6RandomChars
+    // Wildcard covers all secrets starting with 'birthday-bot/' (including birthday-bot/all-config-XXXXXX)
     role.addToPolicy(new iam.PolicyStatement({
       sid: 'ReadSecretsForBirthdayBot',
       actions: ['secretsmanager:GetSecretValue'],
