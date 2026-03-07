@@ -221,6 +221,20 @@ jobs:
           docker compose -f \${COMPOSE_FILE} --env-file .compose.env up -d app
           echo "Cleaning up old images..."
           docker image prune -f || true
+          # Register Telegram webhook (ensures secret_token is always in sync with .env)
+          echo "Registering Telegram webhook..."
+          WH_BOT_TOKEN=\$(grep '^Bot__Token=' .env | head -1 | cut -d= -f2-)
+          WH_SECRET=\$(grep '^Bot__WebhookSecretToken=' .env | head -1 | cut -d= -f2-)
+          WH_DOMAIN=\$(grep '^DOMAIN=' .env | head -1 | cut -d= -f2-)
+          if [ -n "\$WH_BOT_TOKEN" ] && [ -n "\$WH_DOMAIN" ]; then
+            WH_URL="https://\${WH_DOMAIN}/telegram/webhook"
+            WH_RESULT=\$(curl -sf "https://api.telegram.org/bot\${WH_BOT_TOKEN}/setWebhook" \
+              -d "url=\${WH_URL}" \
+              -d "secret_token=\${WH_SECRET}" 2>&1) || true
+            echo "Webhook registration: \${WH_RESULT}"
+          else
+            echo "WARNING: Could not register webhook (missing Bot__Token or DOMAIN in .env)"
+          fi
           sleep 3
           echo "Checking container status..."
           docker compose -f \${COMPOSE_FILE} --env-file .compose.env ps app
