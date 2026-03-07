@@ -7,8 +7,9 @@ on:
       - "backend/**"
       - "Dockerfile"
       - ".github/workflows/build-and-push.yml"
-      - "ops/caddy/**"
+      - "ops/**"
       - "deploy/ec2/**"
+      - "docker-compose.yml"
   workflow_dispatch:
 
 permissions:
@@ -99,6 +100,9 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -158,6 +162,12 @@ jobs:
           echo "::endgroup::"
           
           echo "::group::📤 Sending SSM deployment command"
+          
+          # Encode config files to sync to EC2 via SSM
+          DC_B64=$(base64 -w0 docker-compose.yml)
+          CF_B64=$(base64 -w0 ops/caddy/Caddyfile)
+          ES_B64=$(base64 -w0 ops/env-from-secrets.sh)
+          
           cat > /tmp/rollout_commands.txt <<EOF
           set -e
           echo "Starting deployment rollout..."
@@ -178,32 +188,30 @@ jobs:
             echo "ACME_EMAIL=admin@example.com" >> .compose.env
             echo "Created .compose.env"
           fi
-          if [ ! -f docker-compose.yml ]; then
-            echo "ERROR: docker-compose.yml not found in /opt/birthday"
+          # Sync config files from repo (base64-encoded in GH Actions runner)
+          echo "Syncing config files from repo..."
+          mkdir -p ops/caddy
+          echo "${DC_B64}" | base64 -d > docker-compose.yml
+          echo "${CF_B64}" | base64 -d > ops/caddy/Caddyfile
+          echo "${ES_B64}" | base64 -d > ops/env-from-secrets.sh
+          chmod +x ops/env-from-secrets.sh
+          rm -f docker-compose.yaml
+          echo "Config files synced"
+          COMPOSE_FILE=docker-compose.yml
+          # Regenerate .env from AWS Secrets Manager (unified or individual secrets)
+          echo "Regenerating .env from secrets..."
+          bash ./ops/env-from-secrets.sh
+          if ! grep -q 'Mongo__ConnectionString' .env; then
+            echo "ERROR: .env missing Mongo__ConnectionString after regeneration"
+            cat .env
             exit 1
           fi
-          COMPOSE_FILE=docker-compose.yml
-          if [ -f docker-compose.yml ] && [ -f docker-compose.yaml ]; then
-            echo "Both docker-compose.yml and docker-compose.yaml found; using docker-compose.yml"
-          elif [ -f docker-compose.yaml ]; then
-            COMPOSE_FILE=docker-compose.yaml
+          if ! grep -q 'Bot__Token' .env; then
+            echo "ERROR: .env missing Bot__Token after regeneration"
+            cat .env
+            exit 1
           fi
-          if [ -f .env ]; then
-            TELEGRAM_TOKEN=\$(grep '^TELEGRAM_BOT_TOKEN=' .env | tail -n1 | cut -d= -f2- || true)
-            WEBHOOK_SECRET=\$(grep '^TELEGRAM_WEBHOOK_SECRET=' .env | tail -n1 | cut -d= -f2- || true)
-            if [ -n "\$TELEGRAM_TOKEN" ]; then
-              sed -i '/^BOT__TOKEN=/d' .env
-              echo "BOT__TOKEN=\${TELEGRAM_TOKEN}" >> .env
-            fi
-            if [ -n "\$WEBHOOK_SECRET" ]; then
-              sed -i '/^BOT__WEBHOOKSECRET=/d;/^BOT__WEBHOOKSECRETTOKEN=/d' .env
-              echo "BOT__WEBHOOKSECRET=\${WEBHOOK_SECRET}" >> .env
-              echo "BOT__WEBHOOKSECRETTOKEN=\${WEBHOOK_SECRET}" >> .env
-            fi
-            echo "Normalized BOT__* variables in .env"
-          else
-            echo "WARNING: .env not found; BOT__* variables were not normalized"
-          fi
+          echo ".env regenerated successfully"
           echo "Pulling image: ${IMG_TAGGED}..."
           docker pull ${IMG_TAGGED} || docker pull ${IMG}
           docker tag ${IMG_TAGGED} ${IMG} 2>/dev/null || true
