@@ -1,7 +1,18 @@
 {$DOMAIN} {
-  @tg path /telegram/webhook
-  reverse_proxy @tg app:8080
+  # Telegram webhook endpoint
+  handle /telegram/webhook {
+    reverse_proxy app:8080
+  }
 
-  reverse_proxy / app:8080
+  # mongo-express web UI (protected by its own basic auth)
+  @mongo path /mongo /mongo/*
+  handle @mongo {
+    reverse_proxy mongo-express:8081
+  }
+
+  # Everything else goes to the bot API (health, metrics, etc.)
+  handle {
+    reverse_proxy app:8080
+  }
 }
 
