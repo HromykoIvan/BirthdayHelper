@@ -1,6 +1,8 @@
+using BirthdayBot.Domain.Enums;
+
 namespace BirthdayBot.Application.Models;
 
-public enum AddWizardStep { Name, LastName, Date, TimeZone, Relation, Interests, Confirm }
+public enum AddWizardStep { Name, LastName, Date, TimeZone, Relation, Interests, GreetingLanguage, Confirm }
 
 public sealed class AddBirthdayWizardSession
 {
@@ -15,6 +17,7 @@ public sealed class AddBirthdayWizardSession
     public string? TimeZoneId { get; set; }
     public string? Relation { get; set; }
     public string? Interests { get; set; }
+    public Language? GreetingLanguage { get; set; }
 
     public bool WaitingCity { get; set; }     // waiting for city text input
 

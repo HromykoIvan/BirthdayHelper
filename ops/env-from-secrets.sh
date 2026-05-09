@@ -34,15 +34,15 @@ if [ -n "$UNIFIED_SECRET" ] && [ "$UNIFIED_SECRET" != "None" ]; then
 else
   # Fallback: read from individual secrets (backward compatibility)
   echo "[info] Reading from individual secrets (fallback mode)" >&2
-  get_secret () {
-    aws secretsmanager get-secret-value --region "$REGION" --secret-id "$1" \
-      --query 'SecretString' --output text
-  }
-  
-  TELEGRAM_TOKEN="$(get_secret birthday-bot/telegram-token)"
-  MONGO_URI="$(get_secret birthday-bot/mongo-url)"
-  WEBHOOK_SECRET="$(get_secret birthday-bot/webhook-secret || echo '')"
-  DUCKDNS_TOKEN="$(get_secret birthday-bot/duckdns-token || echo '')"
+get_secret () {
+  aws secretsmanager get-secret-value --region "$REGION" --secret-id "$1" \
+    --query 'SecretString' --output text
+}
+
+TELEGRAM_TOKEN="$(get_secret birthday-bot/telegram-token)"
+MONGO_URI="$(get_secret birthday-bot/mongo-url)"
+WEBHOOK_SECRET="$(get_secret birthday-bot/webhook-secret || echo '')"
+DUCKDNS_TOKEN="$(get_secret birthday-bot/duckdns-token || echo '')"
 fi
 # Extract database name from URI (strip query parameters for Atlas compatibility)
 DB_NAME="${MONGO_URI##*/}"

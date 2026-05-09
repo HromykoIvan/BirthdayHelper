@@ -18,7 +18,7 @@ public class User
     /// </summary>
     public string NotifyAtLocalTime { get; set; } = "09:00";
 
-    public Language Lang { get; set; } = Language.Ru;
+    public Language Lang { get; set; } = Language.En;
 
     public bool AutoGenerateGreetings { get; set; } = true;
 
