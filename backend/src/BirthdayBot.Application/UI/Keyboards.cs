@@ -1,91 +1,302 @@
+using BirthdayBot.Application.Interfaces;
+using BirthdayBot.Domain.Entities;
+using BirthdayBot.Domain.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
 namespace BirthdayBot.Application.UI;
 
 public static class Keyboards
 {
+    private static ILocalizationService? _i18n;
+
+    public static void Initialize(ILocalizationService i18n)
+    {
+        _i18n = i18n;
+    }
+
+    private static string GetText(Language lang, string key)
+    {
+        return _i18n?.GetText(lang, key) ?? key;
+    }
+
     // ── Main menu (shown on /start) ──
 
-    public static readonly InlineKeyboardMarkup MainMenuKb =
-        new(new[]
+    public static InlineKeyboardMarkup MainMenuKb(Language lang)
+    {
+        return new(new[]
         {
             new[]
             {
-                InlineKeyboardButton.WithCallbackData("🎂 Добавить ДР", "menu:add"),
-                InlineKeyboardButton.WithCallbackData("📋 Мои записи",  "menu:list"),
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_add"), "menu:add"),
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_list"), "menu:list"),
             },
             new[]
             {
-                InlineKeyboardButton.WithCallbackData("⚙️ Настройки", "menu:settings"),
-                InlineKeyboardButton.WithCallbackData("❓ Помощь",    "menu:help"),
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_settings"), "menu:settings"),
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_help"), "menu:help"),
             }
         });
+    }
 
     // ── "Back to main menu" single button ──
 
-    public static readonly InlineKeyboardMarkup BackToMenuKb =
-        new(new[]
+    public static InlineKeyboardMarkup BackToMenuKb(Language lang)
+    {
+        return new(new[]
         {
-            new[] { InlineKeyboardButton.WithCallbackData("🏠 Главное меню", "menu:home") }
+            new[] { InlineKeyboardButton.WithCallbackData(GetText(lang, "back_to_menu"), "menu:home") }
         });
+    }
+
+    // ── Language selection ──
+
+    public static InlineKeyboardMarkup LanguageSelectionKb(string callbackPrefix = "lang:")
+    {
+        return new(new[]
+        {
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("🇷🇺 Русский", $"{callbackPrefix}ru"),
+                InlineKeyboardButton.WithCallbackData("🇵🇱 Polski", $"{callbackPrefix}pl"),
+            },
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("🇬🇧 English", $"{callbackPrefix}en"),
+            }
+        });
+    }
 
     // ── Reply keyboards for wizard steps ──
 
-    public static readonly ReplyKeyboardMarkup DateKb =
-        new(new[] {
-            new KeyboardButton[] { "Сегодня", "Завтра" },
-            new KeyboardButton[] { "➡️ Пропустить", "❌ Отмена" }
-        }) { ResizeKeyboard = true, OneTimeKeyboard = true };
+    public static ReplyKeyboardMarkup SkipCancelKb(Language lang)
+    {
+        return new(new[]
+        {
+            new KeyboardButton[] { GetText(lang, "skip"), GetText(lang, "cancel") }
+        })
+        { ResizeKeyboard = true, OneTimeKeyboard = true };
+    }
 
-    public static readonly ReplyKeyboardMarkup TimeZoneKb =
-        new(new[] {
-            new KeyboardButton[] { new("📍 Отправить геопозицию") { RequestLocation = true } },
-            new KeyboardButton[] { "🔎 Ввести город", "➡️ Пропустить" },
-            new KeyboardButton[] { "❌ Отмена" }
-        }) { ResizeKeyboard = true, OneTimeKeyboard = true };
-
-    public static readonly ReplyKeyboardMarkup RelationKb =
-        new(new[] {
+    public static ReplyKeyboardMarkup RelationKb(Language lang)
+    {
+        // Relation buttons are mostly emoji-based, but we can localize "Skip" and "Cancel"
+        return new(new[]
+        {
             new KeyboardButton[] { "👪 Семья", "❤️ Партнёр" },
             new KeyboardButton[] { "🎓 Друг", "💼 Коллега" },
-            new KeyboardButton[] { "Другое", "➡️ Пропустить" },
-            new KeyboardButton[] { "❌ Отмена" }
-        }) { ResizeKeyboard = true, OneTimeKeyboard = true };
+            new KeyboardButton[] { "Другое", GetText(lang, "skip") },
+            new KeyboardButton[] { GetText(lang, "cancel") }
+        })
+        { ResizeKeyboard = true, OneTimeKeyboard = true };
+    }
 
-    public static readonly ReplyKeyboardMarkup SkipCancelKb =
-        new(new[] {
-            new KeyboardButton[] { "➡️ Пропустить", "❌ Отмена" }
-        }) { ResizeKeyboard = true, OneTimeKeyboard = true };
+    // ── Settings keyboards ──
+
+    public static InlineKeyboardMarkup SettingsKb(Language lang, User user)
+    {
+        var rows = new List<InlineKeyboardButton[]>();
+
+        // Notification time
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(
+                $"🕐 {user.NotifyAtLocalTime}",
+                "settings:time")
+        });
+
+        // Interface language
+        var langName = user.Lang switch
+        {
+            Language.Ru => GetText(lang, "lang_russian"),
+            Language.Pl => GetText(lang, "lang_polish"),
+            Language.En => GetText(lang, "lang_english"),
+            _ => user.Lang.ToString()
+        };
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(
+                $"🌐 {langName}",
+                "settings:lang")
+        });
+
+        // Timezone
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(
+                $"🌍 {user.Timezone}",
+                "settings:tz")
+        });
+
+        // Auto-greetings
+        var autoStatus = user.AutoGenerateGreetings
+            ? GetText(lang, "settings_on")
+            : GetText(lang, "settings_off");
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(
+                $"🎉 {autoStatus}",
+                "settings:auto")
+        });
+
+        // Tone
+        var toneName = user.Tone == Tone.Formal
+            ? GetText(lang, "settings_formal")
+            : GetText(lang, "settings_friendly");
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(
+                $"💬 {toneName}",
+                "settings:tone")
+        });
+
+        // Back to menu
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(
+                GetText(lang, "back_to_menu"),
+                "menu:home")
+        });
+
+        return new InlineKeyboardMarkup(rows);
+    }
+
+    public static InlineKeyboardMarkup TimePickerKb(Language lang)
+    {
+        var rows = new List<InlineKeyboardButton[]>();
+
+        // Quick time buttons
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData("08:00", "settings:time:08:00"),
+            InlineKeyboardButton.WithCallbackData("09:00", "settings:time:09:00"),
+            InlineKeyboardButton.WithCallbackData("10:00", "settings:time:10:00"),
+        });
+
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData("12:00", "settings:time:12:00"),
+            InlineKeyboardButton.WithCallbackData("15:00", "settings:time:15:00"),
+            InlineKeyboardButton.WithCallbackData("18:00", "settings:time:18:00"),
+        });
+
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData("20:00", "settings:time:20:00"),
+            InlineKeyboardButton.WithCallbackData("21:00", "settings:time:21:00"),
+            InlineKeyboardButton.WithCallbackData("22:00", "settings:time:22:00"),
+        });
+
+        // Back button
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData("◀️ " + GetText(lang, "back_to_menu"), "menu:settings")
+        });
+
+        return new InlineKeyboardMarkup(rows);
+    }
+
+    public static InlineKeyboardMarkup ToneToggleKb(Language lang, Tone current)
+    {
+        var rows = new List<InlineKeyboardButton[]>();
+
+        if (current == Tone.Formal)
+        {
+            rows.Add(new[]
+            {
+                InlineKeyboardButton.WithCallbackData(
+                    $"✅ {GetText(lang, "settings_formal")}",
+                    "settings:tone")
+            });
+            rows.Add(new[]
+            {
+                InlineKeyboardButton.WithCallbackData(
+                    GetText(lang, "settings_friendly"),
+                    "settings:tone")
+            });
+        }
+        else
+        {
+            rows.Add(new[]
+            {
+                InlineKeyboardButton.WithCallbackData(
+                    GetText(lang, "settings_formal"),
+                    "settings:tone")
+            });
+            rows.Add(new[]
+            {
+                InlineKeyboardButton.WithCallbackData(
+                    $"✅ {GetText(lang, "settings_friendly")}",
+                    "settings:tone")
+            });
+        }
+
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData("◀️ " + GetText(lang, "back_to_menu"), "menu:settings")
+        });
+
+        return new InlineKeyboardMarkup(rows);
+    }
+
+    public static InlineKeyboardMarkup CommonTimezonesKb(Language lang)
+    {
+        var rows = new List<InlineKeyboardButton[]>();
+
+        // Common European timezones
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData("Europe/Warsaw", "settings:tz:Europe/Warsaw"),
+            InlineKeyboardButton.WithCallbackData("Europe/Moscow", "settings:tz:Europe/Moscow"),
+        });
+
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData("Europe/Kiev", "settings:tz:Europe/Kiev"),
+            InlineKeyboardButton.WithCallbackData("Europe/Berlin", "settings:tz:Europe/Berlin"),
+        });
+
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData("Europe/London", "settings:tz:Europe/London"),
+            InlineKeyboardButton.WithCallbackData("America/New_York", "settings:tz:America/New_York"),
+        });
+
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(GetText(lang, "calendar_manual"), "settings:tz:input")
+        });
+
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData("◀️ " + GetText(lang, "back_to_menu"), "menu:settings")
+        });
+
+        return new InlineKeyboardMarkup(rows);
+    }
 
     // ── Upcoming period filter (fixed callback data) ──
 
     public static readonly InlineKeyboardMarkup UpcomingKb =
-        new(new[] {
-            new [] {
+        new(new[]
+        {
+            new[]
+            {
                 InlineKeyboardButton.WithCallbackData("📅 Сегодня", "up:today"),
-                InlineKeyboardButton.WithCallbackData("➡️ Завтра",  "up:tomorrow"),
-                InlineKeyboardButton.WithCallbackData("🗓 7 дней",  "up:7")
+                InlineKeyboardButton.WithCallbackData("➡️ Завтра", "up:tomorrow"),
+                InlineKeyboardButton.WithCallbackData("🗓 7 дней", "up:7")
             },
-            new [] {
-                InlineKeyboardButton.WithCallbackData("📆 Этот месяц",  "up:this"),
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("📆 Этот месяц", "up:this"),
                 InlineKeyboardButton.WithCallbackData("📆 След. месяц", "up:next")
             },
-            new [] {
+            new[]
+            {
                 InlineKeyboardButton.WithCallbackData("📑 Все записи", "up:all")
             },
-            new [] {
+            new[]
+            {
                 InlineKeyboardButton.WithCallbackData("🏠 Меню", "menu:home")
-            }
-        });
-
-    // ── Wizard confirm keyboard ──
-
-    public static readonly InlineKeyboardMarkup ConfirmKb =
-        new(new[] {
-            new[] {
-                InlineKeyboardButton.WithCallbackData("✅ Сохранить", "add:ok"),
-                InlineKeyboardButton.WithCallbackData("✏️ Изменить", "add:edit"),
-                InlineKeyboardButton.WithCallbackData("❌ Отмена",   "add:cancel")
             }
         });
 }

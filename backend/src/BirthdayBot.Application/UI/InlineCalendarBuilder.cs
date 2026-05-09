@@ -6,12 +6,15 @@ namespace BirthdayBot.Application.UI;
 /// <summary>
 /// Builds inline-keyboard calendars for date picking and month navigation.
 /// Callback data format:
-///   cal:day:YYYY-MM-DD   — user selected a day
-///   cal:prev:YYYY-MM     — navigate to previous month
-///   cal:next:YYYY-MM     — navigate to next month
-///   cal:ignore           — non-clickable header cell
-///   cal:manual           — user wants to type the date manually
-///   cal:cancel           — cancel date selection
+///   cal:day:YYYY-MM-DD       — user selected a day
+///   cal:prev:YYYY-MM         — navigate to previous month
+///   cal:next:YYYY-MM         — navigate to next month
+///   cal:pickyear:YYYY-MM     — open year picker (click on month/year header)
+///   cal:decade:START-END:MM  — show years in decade (e.g., cal:decade:2020-2029:03)
+///   cal:year:YYYY-MM         — select year and return to calendar
+///   cal:ignore               — non-clickable header cell
+///   cal:manual               — user wants to type the date manually
+///   cal:cancel               — cancel date selection
 /// </summary>
 public static class InlineCalendarBuilder
 {
@@ -37,7 +40,7 @@ public static class InlineCalendarBuilder
         rows.Add(new[]
         {
             InlineKeyboardButton.WithCallbackData("◀️", $"cal:prev:{prev}"),
-            InlineKeyboardButton.WithCallbackData($"{RuMonths[month]} {year}", "cal:ignore"),
+            InlineKeyboardButton.WithCallbackData($"{RuMonths[month]} {year}", $"cal:pickyear:{year}-{month:D2}"),
             InlineKeyboardButton.WithCallbackData("▶️", $"cal:next:{next}"),
         });
 
@@ -134,4 +137,96 @@ public static class InlineCalendarBuilder
     /// Gets the Russian month name (1-based index).
     /// </summary>
     public static string GetMonthName(int month) => RuMonths[month];
+
+    /// <summary>
+    /// Builds a year picker showing decades (1900-1999, 2000-2009, etc.).
+    /// When a decade is clicked, shows individual years in that range.
+    /// </summary>
+    public static InlineKeyboardMarkup BuildYearPicker(int currentYear, int currentMonth)
+    {
+        var rows = new List<InlineKeyboardButton[]>();
+        var currentDecade = (currentYear / 10) * 10;
+        var startDecade = 1900;
+        var endDecade = ((DateTime.UtcNow.Year + 1) / 10) * 10;
+
+        // Group decades into rows of 2
+        for (var decade = endDecade; decade >= startDecade; decade -= 10)
+        {
+            var decadeEnd = decade + 9;
+            var label = decade == currentDecade
+                ? $"▶️ {decade}-{decadeEnd}"
+                : $"{decade}-{decadeEnd}";
+
+            if ((endDecade - decade) % 20 == 0)
+            {
+                // Start new row
+                rows.Add(new[]
+                {
+                    InlineKeyboardButton.WithCallbackData(
+                        label,
+                        $"cal:decade:{decade}-{decadeEnd}:{currentMonth:D2}")
+                });
+            }
+            else
+            {
+                // Add to last row
+                var lastRow = rows[^1].ToList();
+                lastRow.Add(InlineKeyboardButton.WithCallbackData(
+                    label,
+                    $"cal:decade:{decade}-{decadeEnd}:{currentMonth:D2}"));
+                rows[^1] = lastRow.ToArray();
+            }
+        }
+
+        // Back button
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData("◀️ Назад", $"cal:year:{currentYear}-{currentMonth:D2}")
+        });
+
+        return new InlineKeyboardMarkup(rows);
+    }
+
+    /// <summary>
+    /// Builds a year list within a specific decade (e.g., 2020-2029).
+    /// </summary>
+    public static InlineKeyboardMarkup BuildDecadeYears(int decadeStart, int decadeEnd, int currentMonth)
+    {
+        var rows = new List<InlineKeyboardButton[]>();
+        var currentYear = DateTime.UtcNow.Year;
+
+        // Group years into rows of 3
+        for (var year = decadeStart; year <= decadeEnd; year++)
+        {
+            var label = year == currentYear ? $"▶️ {year}" : year.ToString();
+
+            if ((year - decadeStart) % 3 == 0)
+            {
+                // Start new row
+                rows.Add(new[]
+                {
+                    InlineKeyboardButton.WithCallbackData(
+                        label,
+                        $"cal:year:{year}-{currentMonth:D2}")
+                });
+            }
+            else
+            {
+                // Add to last row
+                var lastRow = rows[^1].ToList();
+                lastRow.Add(InlineKeyboardButton.WithCallbackData(
+                    label,
+                    $"cal:year:{year}-{currentMonth:D2}"));
+                rows[^1] = lastRow.ToArray();
+            }
+        }
+
+        // Back button to return to decades
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData("◀️ Назад", $"cal:pickyear:{decadeStart}-{currentMonth:D2}")
+        });
+
+        return new InlineKeyboardMarkup(rows);
+    }
 }

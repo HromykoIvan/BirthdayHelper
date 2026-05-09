@@ -54,6 +54,9 @@ public sealed class UpdateHandler : IUpdateHandler
         _upcoming = upcoming;
         _wizard = wizard;
         _tzdb = tzdb ?? DateTimeZoneProviders.Tzdb;
+        
+        // Initialize Keyboards with localization service
+        Keyboards.Initialize(i18n);
     }
 
     public async Task HandleUpdateAsync(Update update, CancellationToken ct)
@@ -68,6 +71,18 @@ public sealed class UpdateHandler : IUpdateHandler
             var data = update.CallbackQuery?.Data;
             if (!string.IsNullOrEmpty(data))
             {
+                if (data.StartsWith("lang:", StringComparison.Ordinal))
+                {
+                    await HandleLanguageSelectionAsync(update, data, ct);
+                    return;
+                }
+
+                if (data.StartsWith("settings:", StringComparison.Ordinal))
+                {
+                    await HandleSettingsCallbackAsync(update, data, ct);
+                    return;
+                }
+
                 if (data.StartsWith("menu:", StringComparison.Ordinal))
                 {
                     await HandleMenuCallbackAsync(update, data, ct);
@@ -116,7 +131,12 @@ public sealed class UpdateHandler : IUpdateHandler
 
             if (update.CallbackQuery?.Id is { } cqid)
             {
-                await SafeAnswerCallbackQuery(cqid, "Произошла ошибка. Попробуйте ещё раз.", ct);
+                // Try to get user language for error message
+                var errorUser = update.CallbackQuery?.From != null
+                    ? await _users.GetByTelegramUserIdAsync(update.CallbackQuery.From.Id, ct)
+                    : null;
+                var lang = errorUser?.Lang ?? Language.En;
+                await SafeAnswerCallbackQuery(cqid, _i18n.GetText(lang, "error_try_again"), ct);
             }
         }
     }
@@ -133,25 +153,34 @@ public sealed class UpdateHandler : IUpdateHandler
         if (chatId == 0) return;
 
         var text = msg.Text!.Trim();
+        
+        // Check if user exists - if not, show language selection
+        var existingUser = await _users.GetByTelegramUserIdAsync(msg.From!.Id, ct);
+        if (existingUser == null && text.StartsWith("/start", StringComparison.OrdinalIgnoreCase))
+        {
+            await SendLanguageSelection(chatId, ct);
+            return;
+        }
+
         var user = await EnsureUser(msg.From!, ct);
 
         if (text.StartsWith("/start", StringComparison.OrdinalIgnoreCase) ||
             text.StartsWith("/help", StringComparison.OrdinalIgnoreCase))
         {
-            await SendMainMenu(chatId, msg.From!, ct);
+            await SendMainMenu(chatId, msg.From!, user, ct);
             return;
         }
 
         if (text.StartsWith("/add_birthday", StringComparison.OrdinalIgnoreCase))
         {
-            await _wizard.TryHandleAsync(new Update
-            {
-                Message = new Message
-                {
-                    Chat = new Chat { Id = chatId },
+            await _wizard.TryHandleAsync(new Update 
+            { 
+                Message = new Message 
+                { 
+                    Chat = new Chat { Id = chatId }, 
                     From = msg.From,
                     Text = text
-                }
+                } 
             }, ct);
             return;
         }
@@ -190,9 +219,9 @@ public sealed class UpdateHandler : IUpdateHandler
         if (text.StartsWith("/settings", StringComparison.OrdinalIgnoreCase))
         {
             await _bot.SendTextMessageAsync(chatId,
-                _i18n.GetText(user.Lang, "settings_prompt"),
+                BuildSettingsMessage(user),
                 parseMode: ParseMode.Html,
-                replyMarkup: Keyboards.BackToMenuKb,
+                replyMarkup: Keyboards.SettingsKb(user.Lang, user),
                 cancellationToken: ct);
             return;
         }
@@ -202,7 +231,8 @@ public sealed class UpdateHandler : IUpdateHandler
             return;
 
         // Fallback — show main menu
-        await SendMainMenu(chatId, msg.From!, ct);
+        var fallbackUser = await EnsureUser(msg.From!, ct);
+        await SendMainMenu(chatId, msg.From!, fallbackUser, ct);
     }
 
     // ════════════════════════════════════════════
@@ -218,9 +248,12 @@ public sealed class UpdateHandler : IUpdateHandler
         switch (data)
         {
             case "menu:home":
+                var homeUser = await EnsureUser(cq.From, ct);
+                var homeName = Formatting.Html(cq.From.FirstName ?? "");
+                var homeWelcomeText = string.Format(_i18n.GetText(homeUser.Lang, "welcome"), homeName);
                 await SafeEditMessageAsync(chatId, cq.Message.MessageId,
-                    BuildWelcomeText(cq.From),
-                    ParseMode.Html, Keyboards.MainMenuKb, ct);
+                    homeWelcomeText,
+                    ParseMode.Html, Keyboards.MainMenuKb(homeUser.Lang), ct);
                 break;
 
             case "menu:add":
@@ -243,15 +276,13 @@ public sealed class UpdateHandler : IUpdateHandler
                 return;
 
             case "menu:settings":
-                await SafeEditMessageAsync(chatId, cq.Message.MessageId,
-                    _i18n.GetText(user.Lang, "settings_prompt"),
-                    null, Keyboards.BackToMenuKb, ct);
+                await ShowSettingsMenu(chatId, cq.Message.MessageId, user, ct);
                 break;
 
             case "menu:help":
                 await SafeEditMessageAsync(chatId, cq.Message.MessageId,
                     _i18n.GetText(user.Lang, "help"),
-                    ParseMode.Html, Keyboards.BackToMenuKb, ct);
+                    ParseMode.Html, Keyboards.BackToMenuKb(user.Lang), ct);
                 break;
         }
 
@@ -343,7 +374,7 @@ public sealed class UpdateHandler : IUpdateHandler
 
             // list:month:YYYY-MM
             if (data.StartsWith("list:month:", StringComparison.Ordinal))
-            {
+        {
                 var parts = data["list:month:".Length..].Split('-');
                 if (parts.Length == 2 &&
                     int.TryParse(parts[0], out var year) &&
@@ -407,26 +438,226 @@ public sealed class UpdateHandler : IUpdateHandler
     }
 
     // ════════════════════════════════════════════
+    //  Settings callbacks (settings:*)
+    // ════════════════════════════════════════════
+
+    private async Task HandleSettingsCallbackAsync(Update update, string data, CancellationToken ct)
+    {
+        var cq = update.CallbackQuery!;
+        var chatId = cq.Message!.Chat.Id;
+        var user = await EnsureUser(cq.From, ct);
+
+        try
+        {
+            if (data == "settings:time")
+            {
+                await SafeEditMessageAsync(chatId, cq.Message.MessageId,
+                    _i18n.GetText(user.Lang, "settings_select_time"),
+                    ParseMode.Html, Keyboards.TimePickerKb(user.Lang), ct);
+                await SafeAnswerCallbackQuery(cq.Id, ct: ct);
+                return;
+            }
+
+            if (data.StartsWith("settings:time:", StringComparison.Ordinal))
+            {
+                var timeStr = data["settings:time:".Length..];
+                if (DateHelpers.TryParseTimeHHmm(timeStr, out var h, out var m))
+                {
+                    user.NotifyAtLocalTime = $"{h:00}:{m:00}";
+                    await _users.UpdateAsync(user, ct);
+                    await ShowSettingsMenu(chatId, cq.Message.MessageId, user, ct);
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "saved"), ct);
+                    return;
+                }
+            }
+
+            if (data == "settings:lang")
+            {
+                await SafeEditMessageAsync(chatId, cq.Message.MessageId,
+                    _i18n.GetText(user.Lang, "select_language"),
+                    ParseMode.Html, Keyboards.LanguageSelectionKb("settings:lang:"), ct);
+                await SafeAnswerCallbackQuery(cq.Id, ct: ct);
+                return;
+            }
+
+            if (data.StartsWith("settings:lang:", StringComparison.Ordinal))
+            {
+                var langCode = data["settings:lang:".Length..];
+                var selectedLang = langCode switch
+                {
+                    "ru" => Language.Ru,
+                    "pl" => Language.Pl,
+                    "en" => Language.En,
+                    _ => user.Lang
+                };
+                user.Lang = selectedLang;
+                await _users.UpdateAsync(user, ct);
+                await ShowSettingsMenu(chatId, cq.Message.MessageId, user, ct);
+                await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "saved"), ct);
+                return;
+            }
+
+            if (data == "settings:tz")
+            {
+                await SafeEditMessageAsync(chatId, cq.Message.MessageId,
+                    _i18n.GetText(user.Lang, "settings_select_timezone"),
+                    ParseMode.Html, Keyboards.CommonTimezonesKb(user.Lang), ct);
+                await SafeAnswerCallbackQuery(cq.Id, ct: ct);
+                return;
+            }
+
+            if (data.StartsWith("settings:tz:", StringComparison.Ordinal))
+            {
+                var tz = data["settings:tz:".Length..];
+                if (tz == "input")
+                {
+                    // User wants to enter timezone manually - we'll handle it in text message handler
+                    await SafeEditMessageAsync(chatId, cq.Message.MessageId,
+                        _i18n.GetText(user.Lang, "settings_select_timezone"),
+                        ParseMode.Html, Keyboards.BackToMenuKb(user.Lang), ct);
+                    await SafeAnswerCallbackQuery(cq.Id, ct: ct);
+                    return;
+                }
+
+                if (_tzdb.Ids.Contains(tz))
+                {
+                    user.Timezone = tz;
+                    await _users.UpdateAsync(user, ct);
+                    await ShowSettingsMenu(chatId, cq.Message.MessageId, user, ct);
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "saved"), ct);
+                    return;
+                }
+            }
+
+            if (data == "settings:auto")
+            {
+                user.AutoGenerateGreetings = !user.AutoGenerateGreetings;
+                await _users.UpdateAsync(user, ct);
+                await ShowSettingsMenu(chatId, cq.Message.MessageId, user, ct);
+                await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "saved"), ct);
+                return;
+            }
+
+            if (data == "settings:tone")
+            {
+                user.Tone = user.Tone == Tone.Formal ? Tone.Friendly : Tone.Formal;
+                await _users.UpdateAsync(user, ct);
+                await ShowSettingsMenu(chatId, cq.Message.MessageId, user, ct);
+                await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "saved"), ct);
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to handle settings callback '{Data}'", data);
+            await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
+        }
+    }
+
+    private string BuildSettingsMessage(User user)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(_i18n.GetText(user.Lang, "settings_title"));
+        sb.AppendLine();
+
+        // Notification time
+        sb.AppendLine(string.Format(_i18n.GetText(user.Lang, "settings_notification_time"), user.NotifyAtLocalTime));
+
+        // Interface language
+        var langName = user.Lang switch
+        {
+            Language.Ru => _i18n.GetText(user.Lang, "lang_russian"),
+            Language.Pl => _i18n.GetText(user.Lang, "lang_polish"),
+            Language.En => _i18n.GetText(user.Lang, "lang_english"),
+            _ => user.Lang.ToString()
+        };
+        sb.AppendLine(string.Format(_i18n.GetText(user.Lang, "settings_language"), langName));
+
+        // Timezone
+        sb.AppendLine(string.Format(_i18n.GetText(user.Lang, "settings_timezone"), user.Timezone));
+
+        // Auto-greetings
+        var autoStatus = user.AutoGenerateGreetings
+            ? _i18n.GetText(user.Lang, "settings_on")
+            : _i18n.GetText(user.Lang, "settings_off");
+        sb.AppendLine(string.Format(_i18n.GetText(user.Lang, "settings_auto_greetings"), autoStatus));
+
+        // Tone
+        var toneName = user.Tone == Tone.Formal
+            ? _i18n.GetText(user.Lang, "settings_formal")
+            : _i18n.GetText(user.Lang, "settings_friendly");
+        sb.AppendLine(string.Format(_i18n.GetText(user.Lang, "settings_tone"), toneName));
+
+        return sb.ToString();
+    }
+
+    private async Task ShowSettingsMenu(long chatId, int messageId, User user, CancellationToken ct)
+    {
+        var message = BuildSettingsMessage(user);
+        await SafeEditMessageAsync(chatId, messageId, message,
+            ParseMode.Html, Keyboards.SettingsKb(user.Lang, user), ct);
+    }
+
+    // ════════════════════════════════════════════
     //  View builders
     // ════════════════════════════════════════════
 
     /// <summary>Sends the main menu with a welcome message.</summary>
-    private async Task SendMainMenu(long chatId, Telegram.Bot.Types.User tgUser, CancellationToken ct)
+    private async Task SendMainMenu(long chatId, Telegram.Bot.Types.User tgUser, User user, CancellationToken ct)
     {
+        var name = Formatting.Html(tgUser.FirstName ?? "");
+        var welcomeText = string.Format(_i18n.GetText(user.Lang, "welcome"), name);
+        
         await _bot.SendTextMessageAsync(chatId,
-            BuildWelcomeText(tgUser),
+            welcomeText,
             parseMode: ParseMode.Html,
-            replyMarkup: Keyboards.MainMenuKb,
+            replyMarkup: Keyboards.MainMenuKb(user.Lang),
             cancellationToken: ct);
     }
 
-    private static string BuildWelcomeText(Telegram.Bot.Types.User tgUser)
+    /// <summary>Sends language selection for new users.</summary>
+    private async Task SendLanguageSelection(long chatId, CancellationToken ct)
     {
-        var name = Formatting.Html(tgUser.FirstName ?? "");
-        return
-            $"👋 <b>Привет, {name}!</b>\n\n" +
-            "Я помогу тебе не забыть ни одного дня рождения.\n" +
-            "Выбери действие:";
+        // Use English as default for language selection screen
+        await _bot.SendTextMessageAsync(chatId,
+            _i18n.GetText(Language.En, "select_language"),
+            parseMode: ParseMode.Html,
+            replyMarkup: Keyboards.LanguageSelectionKb("lang:"),
+            cancellationToken: ct);
+    }
+
+    /// <summary>Handles language selection callback (lang:ru, lang:pl, lang:en).</summary>
+    private async Task HandleLanguageSelectionAsync(Update update, string data, CancellationToken ct)
+    {
+        var cq = update.CallbackQuery!;
+        var chatId = cq.Message!.Chat.Id;
+        var langCode = data["lang:".Length..];
+
+        var selectedLang = langCode switch
+        {
+            "ru" => Language.Ru,
+            "pl" => Language.Pl,
+            "en" => Language.En,
+            _ => Language.En
+        };
+
+        // Get or create user
+        var user = await EnsureUser(cq.From, ct);
+        user.Lang = selectedLang;
+        await _users.UpdateAsync(user, ct);
+
+        var langName = selectedLang switch
+        {
+            Language.Ru => _i18n.GetText(selectedLang, "lang_russian"),
+            Language.Pl => _i18n.GetText(selectedLang, "lang_polish"),
+            Language.En => _i18n.GetText(selectedLang, "lang_english"),
+            _ => selectedLang.ToString()
+        };
+
+        await SafeAnswerCallbackQuery(cq.Id, string.Format(_i18n.GetText(selectedLang, "language_selected"), langName), ct);
+        
+        // Show main menu in selected language
+        await SendMainMenu(chatId, cq.From, user, ct);
     }
 
     /// <summary>Sends the current month view (month navigator + birthday list).</summary>
@@ -446,22 +677,22 @@ public sealed class UpdateHandler : IUpdateHandler
     private async Task<(string text, InlineKeyboardMarkup kb)> BuildMonthViewAsync(
         BirthdayBot.Domain.Entities.User user, int year, int month, CancellationToken ct)
     {
-        var zone = _tzdb[user.Timezone];
-        var today = SystemClock.Instance.GetCurrentInstant().InZone(zone).Date;
+            var zone = _tzdb[user.Timezone];
+            var today = SystemClock.Instance.GetCurrentInstant().InZone(zone).Date;
 
-        var list = await _birthdays.ListByUserAsync(user.Id, ct);
+            var list = await _birthdays.ListByUserAsync(user.Id, ct);
 
         // Find birthdays whose next occurrence falls in the requested month
-        var items = list
-            .Select(b =>
-            {
-                var (next, age) = DateHelpers.NextBirthday(today, b.Date);
+            var items = list
+                .Select(b =>
+                {
+                    var (next, age) = DateHelpers.NextBirthday(today, b.Date);
                 return new UpcomingRow(b.FullName, b.Date, next, age, b.Relation);
-            })
+                })
             .Where(x => x.NextDate.Year == year && x.NextDate.Month == month)
             .OrderBy(x => x.NextDate.Day)
-            .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
 
         var sb = new StringBuilder();
         sb.AppendLine($"📅 <b>{InlineCalendarBuilder.GetMonthName(month)} {year}</b>\n");
@@ -534,7 +765,7 @@ public sealed class UpdateHandler : IUpdateHandler
             parseMode: ParseMode.Html,
             replyMarkup: new InlineKeyboardMarkup(rows),
             cancellationToken: ct);
-    }
+        }
 
     // ════════════════════════════════════════════
     //  Formatting helpers
@@ -592,7 +823,7 @@ public sealed class UpdateHandler : IUpdateHandler
 
         await _users.UpdateAsync(user, ct);
         await _bot.SendTextMessageAsync(chatId, _i18n.GetText(user.Lang, "saved"),
-            replyMarkup: Keyboards.BackToMenuKb, cancellationToken: ct);
+            replyMarkup: Keyboards.BackToMenuKb(user.Lang), cancellationToken: ct);
         return true;
     }
 
@@ -610,7 +841,7 @@ public sealed class UpdateHandler : IUpdateHandler
             TelegramUserId = tgUser.Id,
             Timezone = "Europe/Warsaw",
             NotifyAtLocalTime = "09:00",
-            Lang = Language.Ru,
+            Lang = Language.En,
             AutoGenerateGreetings = true,
             Tone = Tone.Friendly,
             CreatedAt = DateTime.UtcNow

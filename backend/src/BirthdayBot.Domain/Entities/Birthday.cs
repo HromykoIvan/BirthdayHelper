@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using BirthdayBot.Domain.Enums;
 
 namespace BirthdayBot.Domain.Entities;
 
@@ -10,7 +11,7 @@ public sealed class Birthday
     
     [BsonRepresentation(BsonType.ObjectId)]
     public ObjectId UserId { get; set; }        // owner
-
+    
     public string Name { get; set; } = default!;       // first name
     public string? LastName { get; set; }               // last name (optional, for LLM greetings)
     public DateOnly Date { get; set; }
@@ -21,6 +22,11 @@ public sealed class Birthday
     public string? Interests { get; set; }      // hobbies/interests for LLM context
     public string? Notes { get; set; }          // free-form notes
     public int?   ReminderDaysBefore { get; set; }
+    
+    /// <summary>
+    /// Language for greeting generation. If null, uses user's interface language.
+    /// </summary>
+    public Language? GreetingLanguage { get; set; }
 
     // Computed properties for fast queries
     public int Month => Date.Month;
