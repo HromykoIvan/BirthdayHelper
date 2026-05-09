@@ -9,6 +9,28 @@ public static class Keyboards
 {
     private static ILocalizationService? _i18n;
 
+    // Backward-compatible keyboards used by legacy flow implementation.
+    public static ReplyKeyboardMarkup DateKb => new(new[]
+    {
+        new KeyboardButton[] { "Сегодня", "Завтра" },
+        new KeyboardButton[] { "❌ Отмена" }
+    })
+    { ResizeKeyboard = true, OneTimeKeyboard = true };
+
+    public static ReplyKeyboardMarkup TimeZoneKb => new(new[]
+    {
+        new KeyboardButton[] { "🔎 Ввести город", "➡️ Пропустить" },
+        new KeyboardButton[] { "❌ Отмена" }
+    })
+    { ResizeKeyboard = true, OneTimeKeyboard = true };
+
+    public static InlineKeyboardMarkup ConfirmKb => new(new[]
+    {
+        new [] { InlineKeyboardButton.WithCallbackData("✅ Сохранить", "add:ok") },
+        new [] { InlineKeyboardButton.WithCallbackData("✏️ Изменить", "add:edit") },
+        new [] { InlineKeyboardButton.WithCallbackData("❌ Отмена", "add:cancel") }
+    });
+
     public static void Initialize(ILocalizationService i18n)
     {
         _i18n = i18n;

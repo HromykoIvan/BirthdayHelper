@@ -5,6 +5,7 @@ using BirthdayBot.Application.Models;
 using BirthdayBot.Application.UI;
 using BirthdayBot.Application.Utils;
 using BirthdayBot.Domain.Entities;
+using BirthdayBot.Domain.Enums;
 using Microsoft.Extensions.Logging;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
@@ -122,7 +123,11 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                 {
                     case "add:cancel":
                         _store.Remove(chatId);
+                        var cancelLang = await ResolveLanguageAsync(s1.UserId, ct);
                         await SafeEditAsync(update, chatId, "❌ Отменено", ct);
+                        await _bot.SendTextMessageAsync(chatId, "Что дальше?",
+                            replyMarkup: Keyboards.MainMenuKb(cancelLang),
+                            cancellationToken: ct);
                         return true;
 
                     case "add:editname":
@@ -199,9 +204,10 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                             ct, ParseMode.Html);
 
                         // Show main menu after save
+                        var savedLang = await ResolveLanguageAsync(s1.UserId, ct);
                         await _bot.SendTextMessageAsync(chatId,
                             "Что дальше?",
-                            replyMarkup: Keyboards.MainMenuKb,
+                            replyMarkup: Keyboards.MainMenuKb(savedLang),
                             cancellationToken: ct);
 
                         return true;
@@ -215,10 +221,11 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                 if (text.Equals("❌ Отмена", StringComparison.OrdinalIgnoreCase) || text.Equals("/cancel"))
                 {
                     _store.Remove(chatId);
+                    var cancelLang = await ResolveLanguageAsync(s.UserId, ct);
                     await _bot.SendTextMessageAsync(chatId, "❌ Отменено",
                         replyMarkup: new ReplyKeyboardRemove(), cancellationToken: ct);
                     await _bot.SendTextMessageAsync(chatId, "Что дальше?",
-                        replyMarkup: Keyboards.MainMenuKb, cancellationToken: ct);
+                        replyMarkup: Keyboards.MainMenuKb(cancelLang), cancellationToken: ct);
                     return true;
                 }
 
@@ -245,7 +252,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                             $"👤 Имя: <b>{Formatting.Html(name)}</b>\n\n" +
                             "Теперь введи <b>фамилию</b> (или нажми «Пропустить»).",
                             parseMode: ParseMode.Html,
-                            replyMarkup: Keyboards.SkipCancelKb,
+                            replyMarkup: Keyboards.SkipCancelKb(await ResolveLanguageAsync(s.UserId, ct)),
                             cancellationToken: ct);
 
                         return true;
@@ -265,7 +272,8 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                             {
                                 await _bot.SendTextMessageAsync(chatId,
                                     "Фамилия слишком длинная (макс. 64 символа).",
-                                    replyMarkup: Keyboards.SkipCancelKb, cancellationToken: ct);
+                                    replyMarkup: Keyboards.SkipCancelKb(await ResolveLanguageAsync(s.UserId, ct)),
+                                    cancellationToken: ct);
                                 return true;
                             }
                             s.LastName = ln;
@@ -302,7 +310,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                         s.Step = AddWizardStep.Relation;
                         _store.Upsert(s);
 
-                        await AskRelation(chatId, ct);
+                        await AskRelation(chatId, s.UserId, ct);
                         return true;
 
                     // ④ Relation (optional)
@@ -322,7 +330,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                             "Например: <i>рыбалка, шахматы, кулинария</i>\n" +
                             "Или нажми «Пропустить».",
                             parseMode: ParseMode.Html,
-                            replyMarkup: Keyboards.SkipCancelKb,
+                            replyMarkup: Keyboards.SkipCancelKb(await ResolveLanguageAsync(s.UserId, ct)),
                             cancellationToken: ct);
                         return true;
 
@@ -381,8 +389,9 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                         "❌ Отменено", null, ct);
                 }
                 await SafeAnswerCq(cq.Id, ct: ct);
+                var cancelLang = await ResolveLanguageAsync(s.UserId, ct);
                 await _bot.SendTextMessageAsync(chatId, "Что дальше?",
-                    replyMarkup: Keyboards.MainMenuKb, cancellationToken: ct);
+                    replyMarkup: Keyboards.MainMenuKb(cancelLang), cancellationToken: ct);
                 return;
             }
 
@@ -446,7 +455,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                     }
 
                     await SafeAnswerCq(cq.Id, ct: ct);
-                    await AskRelation(chatId, ct);
+                    await AskRelation(chatId, s.UserId, ct);
                     return;
                 }
             }
@@ -462,13 +471,13 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
 
     // ── Shared prompts ──
 
-    private async Task AskRelation(long chatId, CancellationToken ct)
+    private async Task AskRelation(long chatId, long userId, CancellationToken ct)
     {
         await _bot.SendTextMessageAsync(chatId,
             "👥 <b>Кто этот человек для тебя?</b>\n" +
             "Выбери кнопку или введи свой вариант.",
             parseMode: ParseMode.Html,
-            replyMarkup: Keyboards.RelationKb,
+            replyMarkup: Keyboards.RelationKb(await ResolveLanguageAsync(userId, ct)),
             cancellationToken: ct);
     }
 
@@ -585,5 +594,19 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
     {
         try { await _bot.AnswerCallbackQueryAsync(id, text, cancellationToken: ct); }
         catch (Exception ex) { _logger.LogDebug(ex, "AnswerCallbackQuery failed"); }
+    }
+
+    private async Task<Language> ResolveLanguageAsync(long telegramUserId, CancellationToken ct)
+    {
+        try
+        {
+            var user = await _users.GetByTelegramUserIdAsync(telegramUserId, ct);
+            return user?.Lang ?? Language.Ru;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to resolve language for user {UserId}", telegramUserId);
+            return Language.Ru;
+        }
     }
 }
