@@ -205,14 +205,14 @@ public sealed class UpdateHandler : IUpdateHandler
             if (b == null)
             {
                 await _bot.SendTextMessageAsync(chatId, "Запись не найдена.",
-                    replyMarkup: Keyboards.BackToMenuKb, cancellationToken: ct);
+                    replyMarkup: Keyboards.BackToMenuKb(user.Lang), cancellationToken: ct);
                 return;
             }
 
             await _birthdays.DeleteAsync(b.Id, user.Id, ct);
             await _bot.SendTextMessageAsync(chatId,
                 "✅ Удалено",
-                replyMarkup: Keyboards.BackToMenuKb, cancellationToken: ct);
+                replyMarkup: Keyboards.BackToMenuKb(user.Lang), cancellationToken: ct);
             return;
         }
 
@@ -422,7 +422,7 @@ public sealed class UpdateHandler : IUpdateHandler
                             cq.Message.Chat.Id,
                             cq.Message.MessageId,
                             "✅ Запись удалена.",
-                            null, Keyboards.BackToMenuKb, ct);
+                            null, Keyboards.BackToMenuKb(user.Lang), ct);
                     }
                 }
             }
@@ -554,7 +554,7 @@ public sealed class UpdateHandler : IUpdateHandler
         }
     }
 
-    private string BuildSettingsMessage(User user)
+    private string BuildSettingsMessage(BirthdayBot.Domain.Entities.User user)
     {
         var sb = new StringBuilder();
         sb.AppendLine(_i18n.GetText(user.Lang, "settings_title"));
@@ -591,7 +591,7 @@ public sealed class UpdateHandler : IUpdateHandler
         return sb.ToString();
     }
 
-    private async Task ShowSettingsMenu(long chatId, int messageId, User user, CancellationToken ct)
+    private async Task ShowSettingsMenu(long chatId, int messageId, BirthdayBot.Domain.Entities.User user, CancellationToken ct)
     {
         var message = BuildSettingsMessage(user);
         await SafeEditMessageAsync(chatId, messageId, message,
@@ -603,7 +603,7 @@ public sealed class UpdateHandler : IUpdateHandler
     // ════════════════════════════════════════════
 
     /// <summary>Sends the main menu with a welcome message.</summary>
-    private async Task SendMainMenu(long chatId, Telegram.Bot.Types.User tgUser, User user, CancellationToken ct)
+    private async Task SendMainMenu(long chatId, Telegram.Bot.Types.User tgUser, BirthdayBot.Domain.Entities.User user, CancellationToken ct)
     {
         var name = Formatting.Html(tgUser.FirstName ?? "");
         var welcomeText = string.Format(_i18n.GetText(user.Lang, "welcome"), name);
@@ -726,7 +726,7 @@ public sealed class UpdateHandler : IUpdateHandler
         {
             await _bot.SendTextMessageAsync(chatId,
                 "📋 Список пуст. Добавьте запись через кнопку ниже.",
-                replyMarkup: Keyboards.MainMenuKb,
+                replyMarkup: Keyboards.MainMenuKb(user.Lang),
                 cancellationToken: ct);
             return;
         }

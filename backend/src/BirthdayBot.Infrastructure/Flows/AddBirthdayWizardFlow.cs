@@ -227,7 +227,9 @@ public sealed class AddBirthdayWizardFlow
                 s.Step = AddWizardStep.Relation; _store.Upsert(s);
                 await _bot.SendTextMessageAsync(msg.Chat,
                     "<b>👥 Отношение</b>\nКто это для вас? Выберите кнопку или введите свой вариант.",
-                    parseMode: ParseMode.Html, replyMarkup: Keyboards.RelationKb, cancellationToken: ct);
+                    parseMode: ParseMode.Html,
+                    replyMarkup: Keyboards.RelationKb(BirthdayBot.Domain.Enums.Language.Ru),
+                    cancellationToken: ct);
                 return true;
             }
 
