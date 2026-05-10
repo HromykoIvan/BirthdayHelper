@@ -472,8 +472,10 @@ jobs:
           
           echo "Verification command ID: $VERIFY_CMD_ID"
           
-          # Poll for SSM command completion (max 3 minutes)
-          TIMEOUT=180
+          # Poll for SSM command completion.
+          # verify_commands itself can run for ~3+ minutes (36 attempts * 5s + command overhead),
+          # so keep a wider outer timeout to avoid false "InProgress" failures.
+          TIMEOUT=420
           ELAPSED=0
           VERIFY_STATUS="InProgress"
           while [ $ELAPSED -lt $TIMEOUT ]; do
@@ -499,6 +501,14 @@ jobs:
           
           if [ $ELAPSED -ge $TIMEOUT ]; then
             echo "⚠️ WARNING: Timeout waiting for health verification (${TIMEOUT}s)"
+            # Do one final status read after timeout to reduce race-condition false negatives.
+            VERIFY_STATUS=$(aws ssm get-command-invocation \
+              --command-id "$VERIFY_CMD_ID" \
+              --instance-id "$IID" \
+              --region "${{ env.AWS_REGION }}" \
+              --query 'Status' \
+              --output text 2>/dev/null || echo "InProgress")
+            VERIFY_STATUS=$(echo "$VERIFY_STATUS" | tr -d '\r' | xargs)
           fi
 
           VERIFY_STDOUT=$(aws ssm get-command-invocation \
