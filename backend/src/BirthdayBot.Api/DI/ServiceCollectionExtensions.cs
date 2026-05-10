@@ -72,6 +72,7 @@ public static class ServiceCollectionExtensions
             });
         }
 
+        services.AddHostedService<MongoIndexInitializerHostedService>();
         services.AddHostedService<ReminderHostedService>();
 
         services.AddHealthChecks()
