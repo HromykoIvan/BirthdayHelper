@@ -56,6 +56,10 @@ public static class Keyboards
             {
                 InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_settings"), "menu:settings"),
                 InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_help"), "menu:help"),
+            },
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_import"), "menu:import_google"),
             }
         });
     }

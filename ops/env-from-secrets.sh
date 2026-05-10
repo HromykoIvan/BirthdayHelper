@@ -29,12 +29,16 @@ if [ -n "$UNIFIED_SECRET" ] && [ "$UNIFIED_SECRET" != "None" ]; then
     WEBHOOK_SECRET=$(echo "$UNIFIED_SECRET" | jq -r '.webhook_secret // ""')
     DUCKDNS_TOKEN=$(echo "$UNIFIED_SECRET" | jq -r '.duckdns_token // ""')
     MONGO_URI=$(echo "$UNIFIED_SECRET" | jq -r '.mongo_cs // .mongo_url')
+    GOOGLE_CLIENT_ID=$(echo "$UNIFIED_SECRET" | jq -r '.google_client_id // ""')
+    GOOGLE_CLIENT_SECRET=$(echo "$UNIFIED_SECRET" | jq -r '.google_client_secret // ""')
   else
     # Fallback: use Python (usually available on EC2)
     TELEGRAM_TOKEN=$(python3 -c "import json, sys; print(json.load(sys.stdin)['telegram_token'])" <<< "$UNIFIED_SECRET")
     WEBHOOK_SECRET=$(python3 -c "import json, sys; print(json.load(sys.stdin).get('webhook_secret', ''))" <<< "$UNIFIED_SECRET")
     DUCKDNS_TOKEN=$(python3 -c "import json, sys; print(json.load(sys.stdin).get('duckdns_token', ''))" <<< "$UNIFIED_SECRET")
     MONGO_URI=$(python3 -c "import json, sys; d=json.load(sys.stdin); print(d.get('mongo_cs') or d.get('mongo_url', ''))" <<< "$UNIFIED_SECRET")
+    GOOGLE_CLIENT_ID=$(python3 -c "import json, sys; print(json.load(sys.stdin).get('google_client_id', ''))" <<< "$UNIFIED_SECRET")
+    GOOGLE_CLIENT_SECRET=$(python3 -c "import json, sys; print(json.load(sys.stdin).get('google_client_secret', ''))" <<< "$UNIFIED_SECRET")
   fi
 else
   # Fallback: read from individual secrets (backward compatibility)
@@ -48,6 +52,8 @@ TELEGRAM_TOKEN="$(get_secret birthday-bot/telegram-token)"
 MONGO_URI="$(get_secret birthday-bot/mongo-url)"
 WEBHOOK_SECRET="$(get_secret birthday-bot/webhook-secret || echo '')"
 DUCKDNS_TOKEN="$(get_secret birthday-bot/duckdns-token || echo '')"
+GOOGLE_CLIENT_ID="$(get_secret birthday-bot/google-client-id || echo '')"
+GOOGLE_CLIENT_SECRET="$(get_secret birthday-bot/google-client-secret || echo '')"
 fi
 
 if [ -z "${TELEGRAM_TOKEN:-}" ] || [ "${TELEGRAM_TOKEN}" = "null" ]; then
@@ -132,6 +138,11 @@ ACME_EMAIL=you@example.com
 
 # DuckDNS (optional, for dynamic DNS updates)
 DUCKDNS_TOKEN=${DUCKDNS_TOKEN}
+
+# Google OAuth (for Google Contacts import)
+Google__ClientId=${GOOGLE_CLIENT_ID}
+Google__ClientSecret=${GOOGLE_CLIENT_SECRET}
+Google__CallbackBaseUrl=https://${DOMAIN}
 
 # mongo-express web UI (https://<DOMAIN>/mongo/)
 ME_CONFIG_MONGODB_URL=${MONGO_URI}

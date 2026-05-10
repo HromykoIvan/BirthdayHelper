@@ -37,6 +37,7 @@ var metricsOptions = app.Services.GetRequiredService<IOptions<MetricsOptions>>()
 if (metricsOptions.Enable) app.MapPrometheusScrapingEndpoint(metricsOptions.ScrapeEndpoint);
 
 app.MapTelegramEndpoints();
+app.MapGoogleAuthEndpoints();
 
 // Mock messages endpoints (only in Development)
 if (app.Environment.IsDevelopment())

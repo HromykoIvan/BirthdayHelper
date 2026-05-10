@@ -12,6 +12,7 @@ using BirthdayBot.Application.Services;
 using BirthdayBot.Infrastructure.Sessions;
 using BirthdayBot.Infrastructure.Geo;
 using BirthdayBot.Infrastructure.Flows;
+using BirthdayBot.Infrastructure.Google;
 
 namespace BirthdayBot.Api.DI;
 
@@ -23,6 +24,7 @@ public static class ServiceCollectionExtensions
         services.Configure<MongoOptions>(cfg.GetSection("Mongo"));
         services.Configure<ReminderOptions>(cfg.GetSection("Reminder"));
         services.Configure<MetricsOptions>(cfg.GetSection("Metrics"));
+        services.Configure<GoogleOptions>(cfg.GetSection("Google"));
 
         services.AddSingleton<MongoContext>();
 
@@ -43,6 +45,10 @@ public static class ServiceCollectionExtensions
 
         // TimeZoneResolver + HttpClient
         services.AddHttpClient<ITimeZoneResolver, TimeZoneResolver>();
+
+        // Google Contacts import
+        services.AddSingleton<PendingGoogleAuthStore>();
+        services.AddHttpClient<IGoogleImportService, GoogleImportService>();
 
         // Upcoming
         services.AddSingleton<IUpcomingService, UpcomingService>();
