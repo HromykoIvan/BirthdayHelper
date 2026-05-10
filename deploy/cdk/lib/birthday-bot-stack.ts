@@ -1,8 +1,7 @@
 import {
-  Stack, StackProps, CfnOutput, Duration, RemovalPolicy,
+  Stack, StackProps, CfnOutput, RemovalPolicy,
   aws_ec2 as ec2, aws_iam as iam, aws_ssm as ssm,
-  aws_secretsmanager as secretsmanager, aws_route53 as route53,
-  aws_route53_targets as r53t, aws_ecr as ecr
+  aws_ecr as ecr
 } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
@@ -46,14 +45,6 @@ export class BirthdayBotStack extends Stack {
     // IPv6 support (optional)
     botSg.addIngressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(80), 'HTTP IPv6 for ACME');
     botSg.addIngressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(443), 'HTTPS IPv6 for webhook');
-
-    // MongoDB Security Group: accepts connections only from Bot SG
-    const mongoSg = new ec2.SecurityGroup(this, 'MongoSg', {
-      vpc,
-      allowAllOutbound: true,
-      description: 'Allow 27017 from bot only',
-    });
-    mongoSg.addIngressRule(botSg, ec2.Port.tcp(27017), 'Mongo from bot');
 
     // --- IAM Role for EC2 ---
     const role = new iam.Role(this, 'Ec2Role', {
@@ -151,57 +142,6 @@ export class BirthdayBotStack extends Stack {
       'systemctl start birthday'
     );
 
-    // --- MongoDB Instance ---
-    // IAM role for SSM + pulling images
-    const mongoRole = new iam.Role(this, 'MongoRole', {
-      assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
-    });
-    mongoRole.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
-
-    // MongoDB instance (AMI + configuration)
-    const mongoInstance = new ec2.Instance(this, 'MongoInstance', {
-      vpc,
-      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },   // Public subnet to pull images from internet
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.MICRO),     // Free Tier
-      machineImage: ec2.MachineImage.latestAmazonLinux2023({
-        cpuType: ec2.AmazonLinuxCpuType.ARM_64,
-      }),
-      securityGroup: mongoSg,
-      role: mongoRole,
-      ssmSessionPermissions: true,
-      blockDevices: [{
-        deviceName: '/dev/xvda',
-        volume: ec2.BlockDeviceVolume.ebs(16, { encrypted: true }),
-      }],
-    });
-
-    // UserData: install docker + run mongo:6 with persistent volume
-    mongoInstance.addUserData(
-      // Install and start docker
-      'dnf -y update',
-      'dnf -y install docker',
-      'systemctl enable --now docker',
-      // Create directory and run container
-      'mkdir -p /var/lib/mongo',
-      'docker run -d --restart unless-stopped --name mongo \\',
-      '  -v /var/lib/mongo:/data/db -p 27017:27017 mongo:6'
-    );
-
-    // --- Private DNS Zone ---
-    // Private Hosted Zone in VPC
-    const phz = new route53.PrivateHostedZone(this, 'SvcLocalZone', {
-      zoneName: 'svc.local',
-      vpc,
-    });
-
-    // A-record pointing to MongoDB private IP
-    new route53.ARecord(this, 'MongoPrivateA', {
-      zone: phz,
-      recordName: 'mongo',
-      target: route53.RecordTarget.fromIpAddresses(mongoInstance.instancePrivateIp),
-      ttl: Duration.minutes(1),
-    });
-
     // --- EC2 Instance for Bot ---
     const instance = new ec2.Instance(this, 'BotInstance', {
       vpc,
@@ -216,13 +156,13 @@ export class BirthdayBotStack extends Stack {
     (instance.node.defaultChild as ec2.CfnInstance).iamInstanceProfile = profile.ref;
 
     // --- SSM Parameter for GitHub Actions ---
-    new ssm.StringParameter(this, 'BotInstanceIdParam', {
+    const botInstanceParam = new ssm.StringParameter(this, 'BotInstanceIdParam', {
       parameterName: '/birthday-bot/bot-instance-id',
       stringValue: instance.instanceId,
       description: 'Bot EC2 Instance ID for GitHub Actions deployment',
-      // Don't delete parameter when stack is destroyed
-      removalPolicy: RemovalPolicy.RETAIN
     });
+    // Keep parameter across stack replacement/removal.
+    (botInstanceParam.node.defaultChild as ssm.CfnParameter).applyRemovalPolicy(RemovalPolicy.RETAIN);
 
     // --- Outputs ---
     new CfnOutput(this, 'PublicIp', { value: instance.instancePublicIp });
@@ -231,8 +171,6 @@ export class BirthdayBotStack extends Stack {
       exportName: 'BirthdayBot-InstanceId',
       description: 'Bot EC2 Instance ID'
     });
-    new CfnOutput(this, 'MongoInstanceId', { value: mongoInstance.instanceId });
-    new CfnOutput(this, 'MongoPrivateIp', { value: mongoInstance.instancePrivateIp });
     new CfnOutput(this, 'EcrRepoUri', { value: repository.repositoryUri });
   }
 }
