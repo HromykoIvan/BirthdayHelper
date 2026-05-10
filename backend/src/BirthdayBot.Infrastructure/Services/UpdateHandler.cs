@@ -7,6 +7,7 @@ using BirthdayBot.Application.Utils;
 using BirthdayBot.Domain.Entities;
 using BirthdayBot.Domain.Enums;
 using BirthdayBot.Domain.Utils;
+using BirthdayBot.Infrastructure.Google;
 using MongoDB.Bson;
 using NodaTime;
 using Telegram.Bot;
@@ -37,6 +38,8 @@ public sealed class UpdateHandler : IUpdateHandler
     private readonly IUpcomingService _upcoming;
     private readonly AddBirthdayWizardFlow _wizard;
     private readonly IDateTimeZoneProvider _tzdb;
+    private readonly IGoogleImportService? _googleImport;
+    private readonly PendingGoogleAuthStore? _pendingGoogleAuth;
 
     public UpdateHandler(
         ILogger<UpdateHandler> logger,
@@ -46,7 +49,9 @@ public sealed class UpdateHandler : IUpdateHandler
         ILocalizationService i18n,
         IUpcomingService upcoming,
         AddBirthdayWizardFlow wizard,
-        IDateTimeZoneProvider? tzdb = null)
+        IDateTimeZoneProvider? tzdb = null,
+        IGoogleImportService? googleImport = null,
+        PendingGoogleAuthStore? pendingGoogleAuth = null)
     {
         _logger = logger;
         _bot = bot;
@@ -56,6 +61,8 @@ public sealed class UpdateHandler : IUpdateHandler
         _upcoming = upcoming;
         _wizard = wizard;
         _tzdb = tzdb ?? DateTimeZoneProviders.Tzdb;
+        _googleImport = googleImport;
+        _pendingGoogleAuth = pendingGoogleAuth;
         
         // Initialize Keyboards with localization service
         Keyboards.Initialize(i18n);
@@ -227,6 +234,12 @@ public sealed class UpdateHandler : IUpdateHandler
             return;
         }
 
+        if (text.StartsWith("/import_google", StringComparison.OrdinalIgnoreCase))
+        {
+            await HandleGoogleImportCommandAsync(user, chatId, ct);
+            return;
+        }
+
         // Loose settings by free text
         if (await TryApplyLooseSettingsAsync(user, chatId, text, ct))
             return;
@@ -285,6 +298,11 @@ public sealed class UpdateHandler : IUpdateHandler
                     _i18n.GetText(user.Lang, "help"),
                     ParseMode.Html, Keyboards.BackToMenuKb(user.Lang), ct);
                 break;
+
+            case "menu:import_google":
+                await SafeAnswerCallbackQuery(cq.Id, ct: ct);
+                await HandleGoogleImportCommandAsync(user, chatId, ct);
+                return;
         }
 
         await SafeAnswerCallbackQuery(cq.Id, ct: ct);
@@ -665,9 +683,52 @@ public sealed class UpdateHandler : IUpdateHandler
     //  View builders
     // ════════════════════════════════════════════
 
-    /// <summary>Sends the main menu with a welcome message.</summary>
-    private async Task SendMainMenu(long chatId, Telegram.Bot.Types.User tgUser, BirthdayBot.Domain.Entities.User user, CancellationToken ct)
+    // ════════════════════════════════════════════
+    //  Google Contacts import
+    // ════════════════════════════════════════════
+
+    private async Task HandleGoogleImportCommandAsync(
+        BirthdayBot.Domain.Entities.User user,
+        long chatId,
+        CancellationToken ct)
     {
+        if (_googleImport is null || _pendingGoogleAuth is null)
+        {
+            await _bot.SendTextMessageAsync(chatId,
+                _i18n.GetText(user.Lang, "import_google_error"),
+                cancellationToken: ct);
+            return;
+        }
+
+        var state = Guid.NewGuid().ToString("N");
+        _pendingGoogleAuth.Set(state, new PendingGoogleAuthEntry(user.TelegramUserId, chatId));
+
+        var authUrl = _googleImport.GenerateAuthUrl(state);
+
+        var keyboard = new Telegram.Bot.Types.ReplyMarkups.InlineKeyboardMarkup(new[]
+        {
+            new[]
+            {
+                Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithUrl(
+                    _i18n.GetText(user.Lang, "import_google_button"),
+                    authUrl)
+            },
+            new[]
+            {
+                Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithCallbackData(
+                    _i18n.GetText(user.Lang, "back_to_menu"), "menu:home")
+            }
+        });
+
+        await _bot.SendTextMessageAsync(chatId,
+            _i18n.GetText(user.Lang, "import_google_prompt"),
+            parseMode: ParseMode.Html,
+            replyMarkup: keyboard,
+            cancellationToken: ct);
+    }
+
+    /// <summary>Sends the main menu with a welcome message.</summary>
+    private async Task SendMainMenu(long chatId, Telegram.Bot.Types.User tgUser, BirthdayBot.Domain.Entities.User user, CancellationToken ct)    {
         var name = Formatting.Html(tgUser.FirstName ?? "");
         var welcomeText = string.Format(_i18n.GetText(user.Lang, "welcome"), name);
         

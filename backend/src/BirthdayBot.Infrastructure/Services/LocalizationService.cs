@@ -488,6 +488,40 @@ public class LocalizationService : ILocalizationService
         {(Language.Ru, "error_try_again"), "Произошла ошибка. Попробуйте ещё раз."},
         {(Language.Pl, "error_try_again"), "Wystąpił błąd. Spróbuj ponownie."},
         {(Language.En, "error_try_again"), "An error occurred. Please try again."},
+
+        // Google Contacts import
+        {(Language.Ru, "import_google_prompt"),
+            "📥 <b>Импорт из Google Контактов</b>\n\n" +
+            "Нажми кнопку ниже и войди в Google. Бот прочитает твои контакты, найдёт дни рождения и добавит их в список.\n\n" +
+            "Ссылка действительна <b>10 минут</b>."},
+        {(Language.Pl, "import_google_prompt"),
+            "📥 <b>Import z Google Kontaktów</b>\n\n" +
+            "Naciśnij przycisk poniżej i zaloguj się do Google. Bot odczyta Twoje kontakty, znajdzie urodziny i doda je do listy.\n\n" +
+            "Link jest ważny przez <b>10 minut</b>."},
+        {(Language.En, "import_google_prompt"),
+            "📥 <b>Import from Google Contacts</b>\n\n" +
+            "Tap the button below and sign in to Google. The bot will read your contacts, find birthdays, and add them to your list.\n\n" +
+            "The link is valid for <b>10 minutes</b>."},
+
+        {(Language.Ru, "import_google_button"), "🔗 Подключить Google"},
+        {(Language.Pl, "import_google_button"), "🔗 Połącz Google"},
+        {(Language.En, "import_google_button"), "🔗 Connect Google"},
+
+        {(Language.Ru, "import_google_success"), "✅ Импортировано: <b>{0}</b>. Уже было в списке (пропущено): {1}."},
+        {(Language.Pl, "import_google_success"), "✅ Zaimportowano: <b>{0}</b>. Już na liście (pominięto): {1}."},
+        {(Language.En, "import_google_success"), "✅ Imported: <b>{0}</b>. Already in your list (skipped): {1}."},
+
+        {(Language.Ru, "import_google_empty"), "😕 В твоих Google Контактах не найдено ни одного дня рождения."},
+        {(Language.Pl, "import_google_empty"), "😕 Nie znaleziono żadnych urodzin w Twoich kontaktach Google."},
+        {(Language.En, "import_google_empty"), "😕 No birthdays found in your Google Contacts."},
+
+        {(Language.Ru, "import_google_error"), "❌ Не удалось выполнить импорт. Попробуй ещё раз."},
+        {(Language.Pl, "import_google_error"), "❌ Nie udało się wykonać importu. Spróbuj ponownie."},
+        {(Language.En, "import_google_error"), "❌ Import failed. Please try again."},
+
+        {(Language.Ru, "menu_import"), "📥 Импорт"},
+        {(Language.Pl, "menu_import"), "📥 Import"},
+        {(Language.En, "menu_import"), "📥 Import"},
     };
 
     public string GetText(Language lang, string key)
