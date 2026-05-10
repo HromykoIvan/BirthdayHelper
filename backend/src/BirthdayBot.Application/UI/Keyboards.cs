@@ -101,12 +101,11 @@ public static class Keyboards
 
     public static ReplyKeyboardMarkup RelationKb(Language lang)
     {
-        // Relation buttons are mostly emoji-based, but we can localize "Skip" and "Cancel"
         return new(new[]
         {
-            new KeyboardButton[] { "👪 Семья", "❤️ Партнёр" },
-            new KeyboardButton[] { "🎓 Друг", "💼 Коллега" },
-            new KeyboardButton[] { "Другое", GetText(lang, "skip") },
+            new KeyboardButton[] { GetText(lang, "relation_family"), GetText(lang, "relation_partner") },
+            new KeyboardButton[] { GetText(lang, "relation_friend"), GetText(lang, "relation_colleague") },
+            new KeyboardButton[] { GetText(lang, "relation_other"), GetText(lang, "skip") },
             new KeyboardButton[] { GetText(lang, "cancel") }
         })
         { ResizeKeyboard = true, OneTimeKeyboard = true };
@@ -298,27 +297,29 @@ public static class Keyboards
 
     // ── Upcoming period filter (fixed callback data) ──
 
-    public static readonly InlineKeyboardMarkup UpcomingKb =
-        new(new[]
+    public static InlineKeyboardMarkup UpcomingKb(Language lang)
+    {
+        return new(new[]
         {
             new[]
             {
-                InlineKeyboardButton.WithCallbackData("📅 Сегодня", "up:today"),
-                InlineKeyboardButton.WithCallbackData("➡️ Завтра", "up:tomorrow"),
-                InlineKeyboardButton.WithCallbackData("🗓 7 дней", "up:7")
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "upcoming_today"), "up:today"),
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "upcoming_tomorrow"), "up:tomorrow"),
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "upcoming_7_days"), "up:7")
             },
             new[]
             {
-                InlineKeyboardButton.WithCallbackData("📆 Этот месяц", "up:this"),
-                InlineKeyboardButton.WithCallbackData("📆 След. месяц", "up:next")
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "upcoming_this_month"), "up:this"),
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "upcoming_next_month"), "up:next")
             },
             new[]
             {
-                InlineKeyboardButton.WithCallbackData("📑 Все записи", "up:all")
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "all_records_button"), "up:all")
             },
             new[]
             {
-                InlineKeyboardButton.WithCallbackData("🏠 Меню", "menu:home")
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "back_to_menu"), "menu:home")
             }
         });
+    }
 }

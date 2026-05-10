@@ -27,6 +27,8 @@ namespace BirthdayBot.Infrastructure.Services;
 /// </summary>
 public sealed class UpdateHandler : IUpdateHandler
 {
+    private const int PageSize = 10;
+
     private readonly ILogger<UpdateHandler> _logger;
     private readonly ITelegramBotClient _bot;
     private readonly IUserRepository _users;
@@ -196,22 +198,21 @@ public sealed class UpdateHandler : IUpdateHandler
             var name = text.Replace("/remove", "", StringComparison.OrdinalIgnoreCase).Trim();
             if (string.IsNullOrWhiteSpace(name))
             {
-                // Show list with delete buttons instead
-                await SendAllBirthdaysWithDeleteButtons(user, chatId, ct);
+                await SendDeletePageAsync(user, chatId, page: 0, messageId: null, ct);
                 return;
             }
 
             var b = await _birthdays.FindByNameAsync(user.Id, name, ct);
             if (b == null)
             {
-                await _bot.SendTextMessageAsync(chatId, "Запись не найдена.",
+                await _bot.SendTextMessageAsync(chatId, _i18n.GetText(user.Lang, "entry_not_found"),
                     replyMarkup: Keyboards.BackToMenuKb(user.Lang), cancellationToken: ct);
                 return;
             }
 
             await _birthdays.DeleteAsync(b.Id, user.Id, ct);
             await _bot.SendTextMessageAsync(chatId,
-                "✅ Удалено",
+                _i18n.GetText(user.Lang, "removed"),
                 replyMarkup: Keyboards.BackToMenuKb(user.Lang), cancellationToken: ct);
             return;
         }
@@ -309,7 +310,7 @@ public sealed class UpdateHandler : IUpdateHandler
             if (kind == "all")
             {
                 await SafeAnswerCallbackQuery(cq.Id, ct: ct);
-                await SendAllBirthdaysWithDeleteButtons(user, chatId, ct);
+                await SendAllBirthdaysPageAsync(user, chatId, page: 0, messageId: cq.Message.MessageId, ct);
                 return;
             }
 
@@ -338,18 +339,18 @@ public sealed class UpdateHandler : IUpdateHandler
                 .ToArray();
 
             var text = items.Length == 0
-                ? "🎉 В выбранный период дней рождения нет."
-                : BuildUpcomingHtml(items);
+                ? _i18n.GetText(user.Lang, "upcoming_empty_period")
+                : BuildUpcomingHtml(user.Lang, items);
 
             await SafeEditMessageAsync(chatId, cq.Message.MessageId,
-                text, ParseMode.Html, Keyboards.UpcomingKb, ct);
+                text, ParseMode.Html, Keyboards.UpcomingKb(user.Lang), ct);
 
             await SafeAnswerCallbackQuery(cq.Id, ct: ct);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to handle upcoming filter callback: {Data}", data);
-            await SafeAnswerCallbackQuery(cq.Id, "Произошла ошибка. Попробуйте ещё раз.", ct);
+            await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
         }
     }
 
@@ -368,7 +369,16 @@ public sealed class UpdateHandler : IUpdateHandler
             if (data == "list:all")
             {
                 await SafeAnswerCallbackQuery(cq.Id, ct: ct);
-                await SendAllBirthdaysWithDeleteButtons(user, chatId, ct);
+                await SendAllBirthdaysPageAsync(user, chatId, page: 0, messageId: cq.Message.MessageId, ct);
+                return;
+            }
+
+            if (data.StartsWith("list:all:", StringComparison.Ordinal))
+            {
+                var pageText = data["list:all:".Length..];
+                var page = int.TryParse(pageText, out var parsedPage) ? parsedPage : 0;
+                await SafeAnswerCallbackQuery(cq.Id, ct: ct);
+                await SendAllBirthdaysPageAsync(user, chatId, page, cq.Message.MessageId, ct);
                 return;
             }
 
@@ -395,7 +405,7 @@ public sealed class UpdateHandler : IUpdateHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to handle list callback: {Data}", data);
-            await SafeAnswerCallbackQuery(cq.Id, "Произошла ошибка.", ct);
+            await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
         }
     }
 
@@ -409,9 +419,62 @@ public sealed class UpdateHandler : IUpdateHandler
 
         try
         {
-            if (cq.Data is { } data && data.StartsWith("delete:", StringComparison.Ordinal))
+            if (cq.Data is { } data && data.StartsWith("delete:list:", StringComparison.Ordinal))
             {
-                var idStr = data["delete:".Length..];
+                var pageText = data["delete:list:".Length..];
+                var page = int.TryParse(pageText, out var parsedPage) ? parsedPage : 0;
+                await SendDeletePageAsync(user, cq.Message!.Chat.Id, page, cq.Message.MessageId, ct);
+            }
+            else if (cq.Data is { } pickData && pickData.StartsWith("delete:pick:", StringComparison.Ordinal))
+            {
+                var parts = pickData.Split(':');
+                if (parts.Length == 4 &&
+                    ObjectId.TryParse(parts[2], out var pickedId) &&
+                    int.TryParse(parts[3], out var page))
+                {
+                    var entry = await _birthdays.GetByIdAsync(pickedId, user.Id, ct);
+                    if (entry is null)
+                    {
+                        await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "entry_not_found"), ct);
+                        return;
+                    }
+
+                    var text = string.Format(
+                        _i18n.GetText(user.Lang, "delete_confirm"),
+                        Formatting.Html(entry.FullName),
+                        $"{entry.Date:dd.MM.yyyy}");
+
+                    await SafeEditMessageAsync(
+                        cq.Message!.Chat.Id,
+                        cq.Message.MessageId,
+                        text,
+                        ParseMode.Html,
+                        BuildDeleteConfirmKeyboard(user.Lang, entry.Id, page),
+                        ct);
+                }
+            }
+            else if (cq.Data is { } confirmData && confirmData.StartsWith("delete:confirm:", StringComparison.Ordinal))
+            {
+                var parts = confirmData.Split(':');
+                if (parts.Length == 4 &&
+                    ObjectId.TryParse(parts[2], out var deleteId) &&
+                    int.TryParse(parts[3], out var page))
+                {
+                    await _birthdays.DeleteAsync(deleteId, user.Id, ct);
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "removed"), ct);
+                    await SendDeletePageAsync(user, cq.Message!.Chat.Id, page, cq.Message.MessageId, ct);
+                    return;
+                }
+            }
+            else if (cq.Data is { } cancelData && cancelData.StartsWith("delete:cancel:", StringComparison.Ordinal))
+            {
+                var pageText = cancelData["delete:cancel:".Length..];
+                var page = int.TryParse(pageText, out var parsedPage) ? parsedPage : 0;
+                await SendDeletePageAsync(user, cq.Message!.Chat.Id, page, cq.Message.MessageId, ct);
+            }
+            else if (cq.Data is { } legacyDeleteData && legacyDeleteData.StartsWith("delete:", StringComparison.Ordinal))
+            {
+                var idStr = legacyDeleteData["delete:".Length..];
                 if (ObjectId.TryParse(idStr, out var bid))
                 {
                     await _birthdays.DeleteAsync(bid, user.Id, ct);
@@ -421,7 +484,7 @@ public sealed class UpdateHandler : IUpdateHandler
                         await SafeEditMessageAsync(
                             cq.Message.Chat.Id,
                             cq.Message.MessageId,
-                            "✅ Запись удалена.",
+                            _i18n.GetText(user.Lang, "removed"),
                             null, Keyboards.BackToMenuKb(user.Lang), ct);
                     }
                 }
@@ -430,7 +493,7 @@ public sealed class UpdateHandler : IUpdateHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to handle callback '{Data}'", cq.Data);
-            await SafeAnswerCallbackQuery(cq.Id, "Ошибка. Попробуйте ещё раз.", ct);
+            await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
             return;
         }
 
@@ -695,11 +758,11 @@ public sealed class UpdateHandler : IUpdateHandler
                 .ToArray();
 
         var sb = new StringBuilder();
-        sb.AppendLine($"📅 <b>{InlineCalendarBuilder.GetMonthName(month)} {year}</b>\n");
+        sb.AppendLine($"📅 <b>{_i18n.GetText(user.Lang, $"month_name_{month}")} {year}</b>\n");
 
         if (items.Length == 0)
         {
-            sb.AppendLine("В этом месяце дней рождения нет.");
+            sb.AppendLine(_i18n.GetText(user.Lang, "no_birthdays_this_month"));
         }
         else
         {
@@ -708,86 +771,280 @@ public sealed class UpdateHandler : IUpdateHandler
                 var dayStr = $"{i.NextDate.Day:D2}.{i.NextDate.Month:D2}";
                 var relation = string.IsNullOrWhiteSpace(i.Relation) ? "" : $" · {Formatting.Html(i.Relation)}";
                 sb.AppendLine($"🎂 <b>{Formatting.Html(i.Name)}</b> — {dayStr}, " +
-                              $"{i.Age} {Formatting.PluralYears(i.Age)}{relation}");
+                              $"{i.Age} {YearWord(user.Lang, i.Age)}{relation}");
             }
         }
 
-        sb.AppendLine($"\n<i>Всего записей: {list.Count}</i>");
+        sb.AppendLine($"\n<i>{string.Format(_i18n.GetText(user.Lang, "total_entries"), list.Count)}</i>");
 
-        var kb = InlineCalendarBuilder.BuildMonthNavigator(year, month, items.Length > 0);
+        var kb = BuildMonthNavigator(user.Lang, year, month);
         return (sb.ToString(), kb);
     }
 
-    /// <summary>Sends all birthdays with per-row delete buttons.</summary>
-    private async Task SendAllBirthdaysWithDeleteButtons(BirthdayBot.Domain.Entities.User user, long chatId, CancellationToken ct)
+    /// <summary>Sends a paginated list of all birthdays sorted by nearest upcoming date.</summary>
+    private async Task SendAllBirthdaysPageAsync(
+        BirthdayBot.Domain.Entities.User user,
+        long chatId,
+        int page,
+        int? messageId,
+        CancellationToken ct)
     {
         var list = await _birthdays.ListByUserAsync(user.Id, ct);
         if (list.Count == 0)
         {
-            await _bot.SendTextMessageAsync(chatId,
-                "📋 Список пуст. Добавьте запись через кнопку ниже.",
-                replyMarkup: Keyboards.MainMenuKb(user.Lang),
-                cancellationToken: ct);
+            await SendOrEditAsync(chatId, messageId,
+                _i18n.GetText(user.Lang, "all_entries_empty"),
+                ParseMode.Html,
+                Keyboards.MainMenuKb(user.Lang),
+                ct);
             return;
         }
 
         var zone = _tzdb[user.Timezone];
         var today = SystemClock.Instance.GetCurrentInstant().InZone(zone).Date;
+        var rows = BuildBirthdayRows(list, today);
+        page = ClampPage(page, rows.Count);
+        var pageRows = rows.Skip(page * PageSize).Take(PageSize).ToArray();
+        var first = page * PageSize + 1;
+        var last = first + pageRows.Length - 1;
 
         var sb = new StringBuilder();
-        sb.AppendLine("📋 <b>Все записи</b>\n");
+        sb.AppendLine(_i18n.GetText(user.Lang, "all_entries"));
+        sb.AppendLine();
+        sb.AppendLine($"<i>{string.Format(_i18n.GetText(user.Lang, "showing_entries"), first, last, rows.Count)}</i>\n");
 
-        var rows = new List<InlineKeyboardButton[]>();
-
-        foreach (var b in list.OrderBy(x => x.Date.Month).ThenBy(x => x.Date.Day))
+        foreach (var item in pageRows)
         {
-            var (next, age) = DateHelpers.NextBirthday(today, b.Date);
-            var relation = string.IsNullOrWhiteSpace(b.Relation) ? "" : $" · {Formatting.Html(b.Relation)}";
-            var interests = string.IsNullOrWhiteSpace(b.Interests) ? "" : $"\n   💡 {Formatting.Html(b.Interests)}";
+            var relation = string.IsNullOrWhiteSpace(item.Birthday.Relation) ? "" : $" · {Formatting.Html(item.Birthday.Relation)}";
+            var interests = string.IsNullOrWhiteSpace(item.Birthday.Interests) ? "" : $"\n   💡 {Formatting.Html(item.Birthday.Interests)}";
+            var next = string.Format(_i18n.GetText(user.Lang, "next_occurrence"),
+                $"{item.NextDate.Day:D2}.{item.NextDate.Month:D2}",
+                item.Age,
+                YearWord(user.Lang, item.Age));
 
-            sb.AppendLine($"🎂 <b>{Formatting.Html(b.FullName)}</b>");
-            sb.AppendLine($"   📅 {b.Date:dd.MM.yyyy} → след. {next:dd.MM}, " +
-                          $"{age} {Formatting.PluralYears(age)}{relation}{interests}");
-
-            rows.Add(new[]
-            {
-                InlineKeyboardButton.WithCallbackData($"🗑 {b.FullName}", $"delete:{b.Id}")
-            });
+            sb.AppendLine($"🎂 <b>{Formatting.Html(item.Birthday.FullName)}</b>");
+            sb.AppendLine($"   📅 {item.Birthday.Date:dd.MM.yyyy} → {next}{relation}{interests}");
         }
 
-        // Add back-to-menu button at the end
-        rows.Add(new[]
-        {
-            InlineKeyboardButton.WithCallbackData("🏠 Главное меню", "menu:home")
-        });
+        await SendOrEditAsync(chatId, messageId, sb.ToString(), ParseMode.Html,
+            BuildAllEntriesKeyboard(user.Lang, page, rows.Count), ct);
+    }
 
-        await _bot.SendTextMessageAsync(chatId, sb.ToString(),
-            parseMode: ParseMode.Html,
-            replyMarkup: new InlineKeyboardMarkup(rows),
-            cancellationToken: ct);
+    /// <summary>Sends a paginated delete picker with compact numbered buttons.</summary>
+    private async Task SendDeletePageAsync(
+        BirthdayBot.Domain.Entities.User user,
+        long chatId,
+        int page,
+        int? messageId,
+        CancellationToken ct)
+    {
+        var list = await _birthdays.ListByUserAsync(user.Id, ct);
+        if (list.Count == 0)
+        {
+            await SendOrEditAsync(chatId, messageId,
+                _i18n.GetText(user.Lang, "all_entries_empty"),
+                ParseMode.Html,
+                Keyboards.MainMenuKb(user.Lang),
+                ct);
+            return;
         }
 
+        var zone = _tzdb[user.Timezone];
+        var today = SystemClock.Instance.GetCurrentInstant().InZone(zone).Date;
+        var rows = BuildBirthdayRows(list, today);
+        page = ClampPage(page, rows.Count);
+        var pageRows = rows.Skip(page * PageSize).Take(PageSize).ToArray();
+        var first = page * PageSize + 1;
+        var last = first + pageRows.Length - 1;
+
+        var sb = new StringBuilder();
+        sb.AppendLine(_i18n.GetText(user.Lang, "delete_list_title"));
+        sb.AppendLine();
+        sb.AppendLine(_i18n.GetText(user.Lang, "delete_select_instruction"));
+        sb.AppendLine($"<i>{string.Format(_i18n.GetText(user.Lang, "showing_entries"), first, last, rows.Count)}</i>\n");
+
+        for (var i = 0; i < pageRows.Length; i++)
+        {
+            var item = pageRows[i];
+            var number = first + i;
+            var relation = string.IsNullOrWhiteSpace(item.Birthday.Relation) ? "" : $" · {Formatting.Html(item.Birthday.Relation)}";
+            sb.AppendLine($"{number}. 🎂 <b>{Formatting.Html(item.Birthday.FullName)}</b> — {item.Birthday.Date:dd.MM.yyyy}{relation}");
+        }
+
+        await SendOrEditAsync(chatId, messageId, sb.ToString(), ParseMode.Html,
+            BuildDeleteListKeyboard(user.Lang, page, rows.Count, pageRows), ct);
+    }
     // ════════════════════════════════════════════
     //  Formatting helpers
     // ════════════════════════════════════════════
 
-    private static string BuildUpcomingHtml(IEnumerable<UpcomingRow> items)
+    private string BuildUpcomingHtml(Language lang, IEnumerable<UpcomingRow> items)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("🎉 <b>Ближайшие дни рождения</b>\n");
+        sb.AppendLine(_i18n.GetText(lang, "upcoming_birthdays"));
+        sb.AppendLine();
 
         foreach (var i in items)
         {
             var dayStr = $"{i.NextDate.Day:D2}.{i.NextDate.Month:D2}";
             var relation = string.IsNullOrWhiteSpace(i.Relation) ? "" : $" · {Formatting.Html(i.Relation)}";
             sb.AppendLine($"🎂 <b>{Formatting.Html(i.Name)}</b> — {dayStr}, " +
-                          $"{i.Age} {Formatting.PluralYears(i.Age)}{relation}");
+                          $"{i.Age} {YearWord(lang, i.Age)}{relation}");
         }
 
         return sb.ToString();
     }
 
     private record struct UpcomingRow(string Name, DateOnly BirthDate, LocalDate NextDate, int Age, string? Relation);
+    private record struct BirthdayListRow(Birthday Birthday, LocalDate NextDate, int Age);
+
+    private List<BirthdayListRow> BuildBirthdayRows(IEnumerable<Birthday> birthdays, LocalDate today)
+    {
+        return birthdays
+            .Select(b =>
+            {
+                var (next, age) = DateHelpers.NextBirthday(today, b.Date);
+                return new BirthdayListRow(b, next, age);
+            })
+            .OrderBy(x => x.NextDate)
+            .ThenBy(x => x.Birthday.FullName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private InlineKeyboardMarkup BuildAllEntriesKeyboard(Language lang, int page, int total)
+    {
+        var rows = new List<InlineKeyboardButton[]>();
+        AddPagingButtons(rows, lang, "list:all", page, total);
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(_i18n.GetText(lang, "delete_entry"), "delete:list:0")
+        });
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(_i18n.GetText(lang, "back_to_menu"), "menu:home")
+        });
+        return new InlineKeyboardMarkup(rows);
+    }
+
+    private InlineKeyboardMarkup BuildDeleteListKeyboard(
+        Language lang,
+        int page,
+        int total,
+        IReadOnlyList<BirthdayListRow> pageRows)
+    {
+        var rows = new List<InlineKeyboardButton[]>();
+        for (var i = 0; i < pageRows.Count; i += 5)
+        {
+            rows.Add(pageRows
+                .Skip(i)
+                .Take(5)
+                .Select((row, index) =>
+                    InlineKeyboardButton.WithCallbackData(
+                        (page * PageSize + i + index + 1).ToString(CultureInfo.InvariantCulture),
+                        $"delete:pick:{row.Birthday.Id}:{page}"))
+                .ToArray());
+        }
+
+        AddPagingButtons(rows, lang, "delete:list", page, total);
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(_i18n.GetText(lang, "all_records_button"), $"list:all:{page}")
+        });
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(_i18n.GetText(lang, "back_to_menu"), "menu:home")
+        });
+        return new InlineKeyboardMarkup(rows);
+    }
+
+    private InlineKeyboardMarkup BuildDeleteConfirmKeyboard(Language lang, ObjectId id, int page)
+    {
+        return new InlineKeyboardMarkup(new[]
+        {
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData(_i18n.GetText(lang, "delete_confirm_button"), $"delete:confirm:{id}:{page}")
+            },
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData(_i18n.GetText(lang, "delete_cancel_button"), $"delete:cancel:{page}")
+            }
+        });
+    }
+
+    private InlineKeyboardMarkup BuildMonthNavigator(Language lang, int year, int month)
+    {
+        var prevMonth = month == 1 ? 12 : month - 1;
+        var prevYear = month == 1 ? year - 1 : year;
+        var nextMonth = month == 12 ? 1 : month + 1;
+        var nextYear = month == 12 ? year + 1 : year;
+
+        return new InlineKeyboardMarkup(new[]
+        {
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData(
+                    $"◀️ {_i18n.GetText(lang, $"month_name_{prevMonth}")[..3]}",
+                    $"list:month:{prevYear}-{prevMonth:D2}"),
+                InlineKeyboardButton.WithCallbackData(
+                    $"📅 {_i18n.GetText(lang, $"month_name_{month}")} {year}",
+                    "cal:ignore"),
+                InlineKeyboardButton.WithCallbackData(
+                    $"{_i18n.GetText(lang, $"month_name_{nextMonth}")[..3]} ▶️",
+                    $"list:month:{nextYear}-{nextMonth:D2}"),
+            },
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData(_i18n.GetText(lang, "all_records_button"), "list:all:0"),
+                InlineKeyboardButton.WithCallbackData(_i18n.GetText(lang, "back_to_menu"), "menu:home"),
+            }
+        });
+    }
+
+    private void AddPagingButtons(List<InlineKeyboardButton[]> rows, Language lang, string callbackPrefix, int page, int total)
+    {
+        var lastPage = Math.Max(0, (total - 1) / PageSize);
+        if (lastPage <= 0)
+        {
+            return;
+        }
+
+        var buttons = new List<InlineKeyboardButton>();
+        if (page > 0)
+        {
+            buttons.Add(InlineKeyboardButton.WithCallbackData(_i18n.GetText(lang, "prev_page"), $"{callbackPrefix}:{page - 1}"));
+        }
+
+        buttons.Add(InlineKeyboardButton.WithCallbackData($"{page + 1}/{lastPage + 1}", "cal:ignore"));
+
+        if (page < lastPage)
+        {
+            buttons.Add(InlineKeyboardButton.WithCallbackData(_i18n.GetText(lang, "next_page"), $"{callbackPrefix}:{page + 1}"));
+        }
+
+        rows.Add(buttons.ToArray());
+    }
+
+    private static int ClampPage(int page, int total)
+    {
+        if (total <= 0)
+        {
+            return 0;
+        }
+
+        var lastPage = (total - 1) / PageSize;
+        return Math.Clamp(page, 0, lastPage);
+    }
+
+    private string YearWord(Language lang, int age)
+    {
+        return lang switch
+        {
+            Language.Ru => Formatting.PluralYears(age),
+            Language.Pl => "lat",
+            _ => age == 1 ? "year" : "years"
+        };
+    }
 
     // ════════════════════════════════════════════
     //  Loose settings
@@ -877,6 +1134,27 @@ public sealed class UpdateHandler : IUpdateHandler
     {
         try { await _bot.AnswerCallbackQueryAsync(id, text, cancellationToken: ct); }
         catch (Exception ex) { _logger.LogDebug(ex, "AnswerCallbackQuery failed"); }
+    }
+
+    private async Task SendOrEditAsync(
+        long chatId,
+        int? messageId,
+        string text,
+        ParseMode? parseMode,
+        IReplyMarkup? replyMarkup,
+        CancellationToken ct)
+    {
+        if (messageId.HasValue && replyMarkup is InlineKeyboardMarkup inlineMarkup)
+        {
+            await SafeEditMessageAsync(chatId, messageId.Value, text, parseMode, inlineMarkup, ct);
+            return;
+        }
+
+        await _bot.SendTextMessageAsync(chatId,
+            text,
+            parseMode: parseMode,
+            replyMarkup: replyMarkup,
+            cancellationToken: ct);
     }
 
     private static LocalDate FirstDayOfNextMonth(LocalDate d)
