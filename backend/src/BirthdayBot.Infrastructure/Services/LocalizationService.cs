@@ -165,6 +165,86 @@ public class LocalizationService : ILocalizationService
         {(Language.Pl, "upcoming_birthdays"), "🎉 <b>Nadchodzące urodziny</b>"},
         {(Language.En, "upcoming_birthdays"), "🎉 <b>Upcoming Birthdays</b>"},
 
+        {(Language.Ru, "upcoming_empty_period"), "🎉 В выбранный период дней рождения нет."},
+        {(Language.Pl, "upcoming_empty_period"), "🎉 Brak urodzin w wybranym okresie."},
+        {(Language.En, "upcoming_empty_period"), "🎉 No birthdays in the selected period."},
+
+        {(Language.Ru, "upcoming_today"), "📅 Сегодня"},
+        {(Language.Pl, "upcoming_today"), "📅 Dziś"},
+        {(Language.En, "upcoming_today"), "📅 Today"},
+
+        {(Language.Ru, "upcoming_tomorrow"), "➡️ Завтра"},
+        {(Language.Pl, "upcoming_tomorrow"), "➡️ Jutro"},
+        {(Language.En, "upcoming_tomorrow"), "➡️ Tomorrow"},
+
+        {(Language.Ru, "upcoming_7_days"), "🗓 7 дней"},
+        {(Language.Pl, "upcoming_7_days"), "🗓 7 dni"},
+        {(Language.En, "upcoming_7_days"), "🗓 7 days"},
+
+        {(Language.Ru, "upcoming_this_month"), "📆 Этот месяц"},
+        {(Language.Pl, "upcoming_this_month"), "📆 Ten miesiąc"},
+        {(Language.En, "upcoming_this_month"), "📆 This month"},
+
+        {(Language.Ru, "upcoming_next_month"), "📆 След. месяц"},
+        {(Language.Pl, "upcoming_next_month"), "📆 Nast. miesiąc"},
+        {(Language.En, "upcoming_next_month"), "📆 Next month"},
+
+        {(Language.Ru, "all_records_button"), "📑 Все записи"},
+        {(Language.Pl, "all_records_button"), "📑 Wszystkie wpisy"},
+        {(Language.En, "all_records_button"), "📑 All entries"},
+
+        {(Language.Ru, "showing_entries"), "Показаны записи {0}-{1} из {2}"},
+        {(Language.Pl, "showing_entries"), "Pokazano wpisy {0}-{1} z {2}"},
+        {(Language.En, "showing_entries"), "Showing entries {0}-{1} of {2}"},
+
+        {(Language.Ru, "prev_page"), "◀️ Назад"},
+        {(Language.Pl, "prev_page"), "◀️ Wstecz"},
+        {(Language.En, "prev_page"), "◀️ Previous"},
+
+        {(Language.Ru, "next_page"), "Вперёд ▶️"},
+        {(Language.Pl, "next_page"), "Dalej ▶️"},
+        {(Language.En, "next_page"), "Next ▶️"},
+
+        {(Language.Ru, "delete_entry"), "🗑 Удалить запись"},
+        {(Language.Pl, "delete_entry"), "🗑 Usuń wpis"},
+        {(Language.En, "delete_entry"), "🗑 Delete entry"},
+
+        {(Language.Ru, "delete_list_title"), "🗑 <b>Удаление записи</b>"},
+        {(Language.Pl, "delete_list_title"), "🗑 <b>Usuwanie wpisu</b>"},
+        {(Language.En, "delete_list_title"), "🗑 <b>Delete Entry</b>"},
+
+        {(Language.Ru, "delete_select_instruction"), "Выберите номер записи для удаления:"},
+        {(Language.Pl, "delete_select_instruction"), "Wybierz numer wpisu do usunięcia:"},
+        {(Language.En, "delete_select_instruction"), "Choose the entry number to delete:"},
+
+        {(Language.Ru, "delete_confirm"), "Удалить запись <b>{0}</b> ({1})?"},
+        {(Language.Pl, "delete_confirm"), "Usunąć wpis <b>{0}</b> ({1})?"},
+        {(Language.En, "delete_confirm"), "Delete <b>{0}</b> ({1})?"},
+
+        {(Language.Ru, "delete_confirm_button"), "✅ Удалить"},
+        {(Language.Pl, "delete_confirm_button"), "✅ Usuń"},
+        {(Language.En, "delete_confirm_button"), "✅ Delete"},
+
+        {(Language.Ru, "delete_cancel_button"), "❌ Отмена"},
+        {(Language.Pl, "delete_cancel_button"), "❌ Anuluj"},
+        {(Language.En, "delete_cancel_button"), "❌ Cancel"},
+
+        {(Language.Ru, "entry_not_found"), "Запись не найдена."},
+        {(Language.Pl, "entry_not_found"), "Nie znaleziono wpisu."},
+        {(Language.En, "entry_not_found"), "Entry not found."},
+
+        {(Language.Ru, "all_entries_empty"), "📋 Список пуст. Добавьте запись через кнопку ниже."},
+        {(Language.Pl, "all_entries_empty"), "📋 Lista jest pusta. Dodaj wpis przyciskiem poniżej."},
+        {(Language.En, "all_entries_empty"), "📋 The list is empty. Add an entry using the button below."},
+
+        {(Language.Ru, "next_occurrence"), "след. {0}, {1} {2}"},
+        {(Language.Pl, "next_occurrence"), "nast. {0}, {1} {2}"},
+        {(Language.En, "next_occurrence"), "next {0}, {1} {2}"},
+
+        {(Language.Ru, "years_word"), "{0}"},
+        {(Language.Pl, "years_word"), "lat"},
+        {(Language.En, "years_word"), "years"},
+
         // Language selection
         {(Language.Ru, "select_language"), "🌐 <b>Выбери язык интерфейса:</b>"},
         {(Language.Pl, "select_language"), "🌐 <b>Wybierz język interfejsu:</b>"},
@@ -243,6 +323,107 @@ public class LocalizationService : ILocalizationService
         {(Language.Ru, "ask_lastname"), "Теперь введи <b>фамилию</b> (или нажми «Пропустить»)."},
         {(Language.Pl, "ask_lastname"), "Teraz podaj <b>nazwisko</b> (lub naciśnij «Pomiń»)."},
         {(Language.En, "ask_lastname"), "Now enter the <b>last name</b> (or press «Skip»)."},
+
+        {(Language.Ru, "wizard_start"),
+            "🎂 <b>Добавляем день рождения</b>\n\n" +
+            "① <b>Имя</b> → ② Фамилия → ③ Дата → ④ Кто это → ⑤ Интересы → ⑥ Подтверждение\n\n" +
+            "Введи <b>имя</b> именинника (например: <code>Маша</code>)."},
+        {(Language.Pl, "wizard_start"),
+            "🎂 <b>Dodajemy urodziny</b>\n\n" +
+            "① <b>Imię</b> → ② Nazwisko → ③ Data → ④ Relacja → ⑤ Zainteresowania → ⑥ Potwierdzenie\n\n" +
+            "Podaj <b>imię</b> solenizanta (np. <code>Maria</code>)."},
+        {(Language.En, "wizard_start"),
+            "🎂 <b>Adding a birthday</b>\n\n" +
+            "① <b>Name</b> → ② Last name → ③ Date → ④ Relation → ⑤ Interests → ⑥ Confirmation\n\n" +
+            "Enter the person's <b>name</b> (for example: <code>Mary</code>)."},
+
+        {(Language.Ru, "wizard_enter_name"), "Введи <b>имя</b> (например: <code>Маша</code>)."},
+        {(Language.Pl, "wizard_enter_name"), "Podaj <b>imię</b> (np. <code>Maria</code>)."},
+        {(Language.En, "wizard_enter_name"), "Enter the <b>name</b> (for example: <code>Mary</code>)."},
+
+        {(Language.Ru, "wizard_name_label"), "Имя:"},
+        {(Language.Pl, "wizard_name_label"), "Imię:"},
+        {(Language.En, "wizard_name_label"), "Name:"},
+
+        {(Language.Ru, "wizard_name_saved"), "👤 Имя: <b>{0}</b>\n\n{1}"},
+        {(Language.Pl, "wizard_name_saved"), "👤 Imię: <b>{0}</b>\n\n{1}"},
+        {(Language.En, "wizard_name_saved"), "👤 Name: <b>{0}</b>\n\n{1}"},
+
+        {(Language.Ru, "wizard_name_length_error"), "Имя должно быть 2–64 символа. Попробуй ещё раз."},
+        {(Language.Pl, "wizard_name_length_error"), "Imię musi mieć 2–64 znaki. Spróbuj ponownie."},
+        {(Language.En, "wizard_name_length_error"), "Name must be 2–64 characters. Please try again."},
+
+        {(Language.Ru, "wizard_lastname_length_error"), "Фамилия слишком длинная (макс. 64 символа)."},
+        {(Language.Pl, "wizard_lastname_length_error"), "Nazwisko jest za długie (maks. 64 znaki)."},
+        {(Language.En, "wizard_lastname_length_error"), "Last name is too long (max. 64 characters)."},
+
+        {(Language.Ru, "wizard_date_prompt"), "📅 Выбери <b>дату рождения</b> в календаре или введи вручную (<code>ДД.ММ.ГГГГ</code>)."},
+        {(Language.Pl, "wizard_date_prompt"), "📅 Wybierz <b>datę urodzenia</b> w kalendarzu albo wpisz ją ręcznie (<code>DD.MM.RRRR</code>)."},
+        {(Language.En, "wizard_date_prompt"), "📅 Select the <b>birthday date</b> in the calendar or enter it manually (<code>DD.MM.YYYY</code>)."},
+
+        {(Language.Ru, "wizard_edit_date_prompt"), "Введи <b>дату</b> или выбери в календаре."},
+        {(Language.Pl, "wizard_edit_date_prompt"), "Podaj <b>datę</b> albo wybierz ją w kalendarzu."},
+        {(Language.En, "wizard_edit_date_prompt"), "Enter the <b>date</b> or select it in the calendar."},
+
+        {(Language.Ru, "wizard_date_parse_error"), "Не понял дату. Введи <code>ДД.ММ</code> или <code>ДД.ММ.ГГГГ</code>, или выбери день в календаре выше."},
+        {(Language.Pl, "wizard_date_parse_error"), "Nie rozumiem daty. Wpisz <code>DD.MM</code> lub <code>DD.MM.RRRR</code> albo wybierz dzień w kalendarzu powyżej."},
+        {(Language.En, "wizard_date_parse_error"), "I could not parse the date. Enter <code>DD.MM</code> or <code>DD.MM.YYYY</code>, or select a day in the calendar above."},
+
+        {(Language.Ru, "wizard_selected_date"), "📅 Выбрана дата: <b>{0}</b>"},
+        {(Language.Pl, "wizard_selected_date"), "📅 Wybrana data: <b>{0}</b>"},
+        {(Language.En, "wizard_selected_date"), "📅 Selected date: <b>{0}</b>"},
+
+        {(Language.Ru, "wizard_manual_date"), "⌨️ Введи дату вручную: <code>ДД.ММ.ГГГГ</code>"},
+        {(Language.Pl, "wizard_manual_date"), "⌨️ Wpisz datę ręcznie: <code>DD.MM.RRRR</code>"},
+        {(Language.En, "wizard_manual_date"), "⌨️ Enter the date manually: <code>DD.MM.YYYY</code>"},
+
+        {(Language.Ru, "wizard_saved_birthday"), "✅ Сохранено!\n\n🎂 <b>{0}</b>, {1}"},
+        {(Language.Pl, "wizard_saved_birthday"), "✅ Zapisano!\n\n🎂 <b>{0}</b>, {1}"},
+        {(Language.En, "wizard_saved_birthday"), "✅ Saved!\n\n🎂 <b>{0}</b>, {1}"},
+
+        {(Language.Ru, "wizard_next_action"), "Что дальше?"},
+        {(Language.Pl, "wizard_next_action"), "Co dalej?"},
+        {(Language.En, "wizard_next_action"), "What's next?"},
+
+        {(Language.Ru, "wizard_cancelled"), "❌ Отменено"},
+        {(Language.Pl, "wizard_cancelled"), "❌ Anulowano"},
+        {(Language.En, "wizard_cancelled"), "❌ Cancelled"},
+
+        {(Language.Ru, "wizard_save_question"), "Сохранить?"},
+        {(Language.Pl, "wizard_save_question"), "Zapisać?"},
+        {(Language.En, "wizard_save_question"), "Save?"},
+
+        {(Language.Ru, "confirm_save"), "✅ Сохранить"},
+        {(Language.Pl, "confirm_save"), "✅ Zapisz"},
+        {(Language.En, "confirm_save"), "✅ Save"},
+
+        {(Language.Ru, "edit_name"), "✏️ Имя"},
+        {(Language.Pl, "edit_name"), "✏️ Imię"},
+        {(Language.En, "edit_name"), "✏️ Name"},
+
+        {(Language.Ru, "edit_date"), "📅 Дата"},
+        {(Language.Pl, "edit_date"), "📅 Data"},
+        {(Language.En, "edit_date"), "📅 Date"},
+
+        {(Language.Ru, "relation_family"), "👪 Семья"},
+        {(Language.Pl, "relation_family"), "👪 Rodzina"},
+        {(Language.En, "relation_family"), "👪 Family"},
+
+        {(Language.Ru, "relation_partner"), "❤️ Партнёр"},
+        {(Language.Pl, "relation_partner"), "❤️ Partner"},
+        {(Language.En, "relation_partner"), "❤️ Partner"},
+
+        {(Language.Ru, "relation_friend"), "🎓 Друг"},
+        {(Language.Pl, "relation_friend"), "🎓 Przyjaciel"},
+        {(Language.En, "relation_friend"), "🎓 Friend"},
+
+        {(Language.Ru, "relation_colleague"), "💼 Коллега"},
+        {(Language.Pl, "relation_colleague"), "💼 Współpracownik"},
+        {(Language.En, "relation_colleague"), "💼 Colleague"},
+
+        {(Language.Ru, "relation_other"), "Другое"},
+        {(Language.Pl, "relation_other"), "Inne"},
+        {(Language.En, "relation_other"), "Other"},
 
         {(Language.Ru, "ask_relation"), "👥 <b>Кто этот человек для тебя?</b>\nВыбери кнопку или введи свой вариант."},
         {(Language.Pl, "ask_relation"), "👥 <b>Kim jest ta osoba dla Ciebie?</b>\nWybierz przycisk lub wpisz własną opcję."},

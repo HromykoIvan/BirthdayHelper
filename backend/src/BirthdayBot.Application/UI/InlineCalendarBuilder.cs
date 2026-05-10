@@ -1,4 +1,5 @@
 using System.Globalization;
+using BirthdayBot.Domain.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
 namespace BirthdayBot.Application.UI;
@@ -24,14 +25,33 @@ public static class InlineCalendarBuilder
         "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
     };
 
-    private static readonly string[] DayHeaders = { "Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс" };
+    private static readonly string[] PlMonths =
+    {
+        "", "Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec",
+        "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"
+    };
+
+    private static readonly string[] EnMonths =
+    {
+        "", "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    };
+
+    private static readonly string[] RuDayHeaders = { "Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс" };
+    private static readonly string[] PlDayHeaders = { "Pn", "Wt", "Śr", "Cz", "Pt", "Sb", "Nd" };
+    private static readonly string[] EnDayHeaders = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
 
     /// <summary>
     /// Builds a month-grid calendar keyboard.
     /// </summary>
     public static InlineKeyboardMarkup BuildMonthGrid(int year, int month, DateOnly? highlightDate = null)
+        => BuildMonthGrid(year, month, Language.Ru, highlightDate);
+
+    public static InlineKeyboardMarkup BuildMonthGrid(int year, int month, Language lang, DateOnly? highlightDate = null)
     {
         var rows = new List<InlineKeyboardButton[]>();
+        var months = Months(lang);
+        var dayHeaders = DayHeaders(lang);
 
         // Row 1: navigation — [◀️] [Month Year] [▶️]
         var prev = month == 1 ? $"{year - 1}-12" : $"{year}-{month - 1:D2}";
@@ -40,12 +60,12 @@ public static class InlineCalendarBuilder
         rows.Add(new[]
         {
             InlineKeyboardButton.WithCallbackData("◀️", $"cal:prev:{prev}"),
-            InlineKeyboardButton.WithCallbackData($"{RuMonths[month]} {year}", $"cal:pickyear:{year}-{month:D2}"),
+            InlineKeyboardButton.WithCallbackData($"{months[month]} {year}", $"cal:pickyear:{year}-{month:D2}"),
             InlineKeyboardButton.WithCallbackData("▶️", $"cal:next:{next}"),
         });
 
         // Row 2: day-of-week headers (non-clickable)
-        rows.Add(DayHeaders.Select(d =>
+        rows.Add(dayHeaders.Select(d =>
             InlineKeyboardButton.WithCallbackData(d, "cal:ignore")).ToArray());
 
         // Rows 3+: day numbers
@@ -89,8 +109,8 @@ public static class InlineCalendarBuilder
         // Bottom row: manual entry + cancel
         rows.Add(new[]
         {
-            InlineKeyboardButton.WithCallbackData("⌨️ Ввести вручную", "cal:manual"),
-            InlineKeyboardButton.WithCallbackData("❌ Отмена", "cal:cancel"),
+            InlineKeyboardButton.WithCallbackData(ManualButton(lang), "cal:manual"),
+            InlineKeyboardButton.WithCallbackData(CancelButton(lang), "cal:cancel"),
         });
 
         return new InlineKeyboardMarkup(rows);
@@ -143,6 +163,9 @@ public static class InlineCalendarBuilder
     /// When a decade is clicked, shows individual years in that range.
     /// </summary>
     public static InlineKeyboardMarkup BuildYearPicker(int currentYear, int currentMonth)
+        => BuildYearPicker(currentYear, currentMonth, Language.Ru);
+
+    public static InlineKeyboardMarkup BuildYearPicker(int currentYear, int currentMonth, Language lang)
     {
         var rows = new List<InlineKeyboardButton[]>();
         var currentDecade = (currentYear / 10) * 10;
@@ -181,7 +204,7 @@ public static class InlineCalendarBuilder
         // Back button
         rows.Add(new[]
         {
-            InlineKeyboardButton.WithCallbackData("◀️ Назад", $"cal:year:{currentYear}-{currentMonth:D2}")
+            InlineKeyboardButton.WithCallbackData(BackButton(lang), $"cal:year:{currentYear}-{currentMonth:D2}")
         });
 
         return new InlineKeyboardMarkup(rows);
@@ -191,6 +214,9 @@ public static class InlineCalendarBuilder
     /// Builds a year list within a specific decade (e.g., 2020-2029).
     /// </summary>
     public static InlineKeyboardMarkup BuildDecadeYears(int decadeStart, int decadeEnd, int currentMonth)
+        => BuildDecadeYears(decadeStart, decadeEnd, currentMonth, Language.Ru);
+
+    public static InlineKeyboardMarkup BuildDecadeYears(int decadeStart, int decadeEnd, int currentMonth, Language lang)
     {
         var rows = new List<InlineKeyboardButton[]>();
         var currentYear = DateTime.UtcNow.Year;
@@ -224,9 +250,44 @@ public static class InlineCalendarBuilder
         // Back button to return to decades
         rows.Add(new[]
         {
-            InlineKeyboardButton.WithCallbackData("◀️ Назад", $"cal:pickyear:{decadeStart}-{currentMonth:D2}")
+            InlineKeyboardButton.WithCallbackData(BackButton(lang), $"cal:pickyear:{decadeStart}-{currentMonth:D2}")
         });
 
         return new InlineKeyboardMarkup(rows);
     }
+
+    private static string[] Months(Language lang) => lang switch
+    {
+        Language.Pl => PlMonths,
+        Language.En => EnMonths,
+        _ => RuMonths
+    };
+
+    private static string[] DayHeaders(Language lang) => lang switch
+    {
+        Language.Pl => PlDayHeaders,
+        Language.En => EnDayHeaders,
+        _ => RuDayHeaders
+    };
+
+    private static string ManualButton(Language lang) => lang switch
+    {
+        Language.Pl => "⌨️ Wpisz ręcznie",
+        Language.En => "⌨️ Enter manually",
+        _ => "⌨️ Ввести вручную"
+    };
+
+    private static string CancelButton(Language lang) => lang switch
+    {
+        Language.Pl => "❌ Anuluj",
+        Language.En => "❌ Cancel",
+        _ => "❌ Отмена"
+    };
+
+    private static string BackButton(Language lang) => lang switch
+    {
+        Language.Pl => "◀️ Wstecz",
+        Language.En => "◀️ Back",
+        _ => "◀️ Назад"
+    };
 }

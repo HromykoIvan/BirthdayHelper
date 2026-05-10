@@ -25,33 +25,32 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
     private readonly IConversationSessionStore _store;
     private readonly IBirthdayRepository _birthdays;
     private readonly IUserRepository _users;
+    private readonly ILocalizationService _i18n;
     private readonly ILogger<AddBirthdayWizardFlow> _logger;
 
     private static readonly Regex DateRegex =
         new(@"^(?<d>\d{1,2})[.\-/](?<m>\d{1,2})(?:[.\-/](?<y>\d{4}))?$",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    // Reply keyboards
-    private static readonly ReplyKeyboardMarkup NameKb = new(new[]
+    private ReplyKeyboardMarkup NameKb(Language lang) => new(new[]
     {
-        new KeyboardButton[] { "❌ Отмена" }
+        new KeyboardButton[] { _i18n.GetText(lang, "cancel") }
     })
     { ResizeKeyboard = true, OneTimeKeyboard = true };
 
-    private static readonly ReplyKeyboardMarkup DateKb = new(new[]
+    private ReplyKeyboardMarkup DateKb(Language lang) => new(new[]
     {
-        new KeyboardButton[] { "📅 Сегодня", "📅 Завтра" },
-        new KeyboardButton[] { "❌ Отмена" }
+        new KeyboardButton[] { $"📅 {_i18n.GetText(lang, "today")}", $"📅 {_i18n.GetText(lang, "tomorrow")}" },
+        new KeyboardButton[] { _i18n.GetText(lang, "cancel") }
     })
     { ResizeKeyboard = true, OneTimeKeyboard = true };
 
-    // Inline confirm keyboard
-    private static readonly InlineKeyboardMarkup ConfirmKb = new(new[]
+    private InlineKeyboardMarkup ConfirmKb(Language lang) => new(new[]
     {
-        new [] { InlineKeyboardButton.WithCallbackData("✅ Сохранить", "add:save") },
-        new [] { InlineKeyboardButton.WithCallbackData("✏️ Имя",      "add:editname"),
-                 InlineKeyboardButton.WithCallbackData("📅 Дата",     "add:editdate") },
-        new [] { InlineKeyboardButton.WithCallbackData("❌ Отмена",   "add:cancel") }
+        new [] { InlineKeyboardButton.WithCallbackData(_i18n.GetText(lang, "confirm_save"), "add:save") },
+        new [] { InlineKeyboardButton.WithCallbackData(_i18n.GetText(lang, "edit_name"), "add:editname"),
+                 InlineKeyboardButton.WithCallbackData(_i18n.GetText(lang, "edit_date"), "add:editdate") },
+        new [] { InlineKeyboardButton.WithCallbackData(_i18n.GetText(lang, "cancel"), "add:cancel") }
     });
 
     public AddBirthdayWizardFlow(
@@ -59,12 +58,14 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
         IConversationSessionStore store,
         IBirthdayRepository birthdays,
         IUserRepository users,
+        ILocalizationService i18n,
         ILogger<AddBirthdayWizardFlow> logger)
     {
         _bot = bot;
         _store = store;
         _birthdays = birthdays;
         _users = users;
+        _i18n = i18n;
         _logger = logger;
     }
 
@@ -87,16 +88,15 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
             // ── Start wizard via /add_birthday ──
             if (text is "/add_birthday")
             {
+                var lang = await ResolveLanguageAsync(userId, ct);
                 var session = new AddBirthdayWizardSession(chatId, userId);
                 _store.Upsert(session);
 
                 await _bot.SendTextMessageAsync(
                     chatId,
-                    "🎂 <b>Добавляем день рождения</b>\n\n" +
-                    "① <b>Имя</b> → ② Фамилия → ③ Дата → ④ Кто это → ⑤ Интересы → ⑥ Подтверждение\n\n" +
-                    "Введи <b>имя</b> именинника (например: <code>Маша</code>).",
+                    _i18n.GetText(lang, "wizard_start"),
                     parseMode: ParseMode.Html,
-                    replyMarkup: NameKb,
+                    replyMarkup: NameKb(lang),
                     cancellationToken: ct);
 
                 return true;
@@ -124,8 +124,8 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                     case "add:cancel":
                         _store.Remove(chatId);
                         var cancelLang = await ResolveLanguageAsync(s1.UserId, ct);
-                        await SafeEditAsync(update, chatId, "❌ Отменено", ct);
-                        await _bot.SendTextMessageAsync(chatId, "Что дальше?",
+                        await SafeEditAsync(update, chatId, _i18n.GetText(cancelLang, "wizard_cancelled"), ct);
+                        await _bot.SendTextMessageAsync(chatId, _i18n.GetText(cancelLang, "wizard_next_action"),
                             replyMarkup: Keyboards.MainMenuKb(cancelLang),
                             cancellationToken: ct);
                         return true;
@@ -133,18 +133,21 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                     case "add:editname":
                         s1.Step = AddWizardStep.Name;
                         _store.Upsert(s1);
+                        var editNameLang = await ResolveLanguageAsync(s1.UserId, ct);
                         await SafeEditAsync(update, chatId,
-                            "Введи <b>имя</b> (например: <code>Маша</code>).",
+                            _i18n.GetText(editNameLang, "wizard_enter_name"),
                             ct, ParseMode.Html);
-                        await _bot.SendTextMessageAsync(chatId, "Имя:", replyMarkup: NameKb, cancellationToken: ct);
+                        await _bot.SendTextMessageAsync(chatId, _i18n.GetText(editNameLang, "wizard_name_label"),
+                            replyMarkup: NameKb(editNameLang), cancellationToken: ct);
                         return true;
 
                     case "add:editdate":
                         s1.Step = AddWizardStep.Date;
                         s1.CalendarMessageId = null;
                         _store.Upsert(s1);
+                        var editDateLang = await ResolveLanguageAsync(s1.UserId, ct);
                         await SafeEditAsync(update, chatId,
-                            "Введи <b>дату</b> или выбери в календаре.",
+                            _i18n.GetText(editDateLang, "wizard_edit_date_prompt"),
                             ct, ParseMode.Html);
                         await SendCalendar(chatId, s1, DateTime.UtcNow.Year, DateTime.UtcNow.Month, ct);
                         return true;
@@ -158,14 +161,15 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                                 var fromUser = update.CallbackQuery?.From;
                                 if (fromUser == null)
                                 {
-                                    await SafeEditAsync(update, chatId, "❌ Не удалось получить информацию о пользователе", ct);
+                                    var errorLang = await ResolveLanguageAsync(s1.UserId, ct);
+                                    await SafeEditAsync(update, chatId, _i18n.GetText(errorLang, "error_try_again"), ct);
                                     return true;
                                 }
 
                                 user = new BirthdayBot.Domain.Entities.User
                                 {
                                     TelegramUserId = fromUser.Id,
-                                    Lang = BirthdayBot.Domain.Enums.Language.Ru,
+                                    Lang = BirthdayBot.Domain.Enums.Language.En,
                                     Tone = BirthdayBot.Domain.Enums.Tone.Friendly,
                                     Timezone = "Europe/Warsaw",
                                     NotifyAtLocalTime = "09:00",
@@ -191,7 +195,8 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                         catch (Exception ex)
                         {
                             _logger.LogError(ex, "Failed to save birthday for user {UserId}", s1.UserId);
-                            await SafeEditAsync(update, chatId, "❌ Ошибка сохранения", ct);
+                            var errorLang = await ResolveLanguageAsync(s1.UserId, ct);
+                            await SafeEditAsync(update, chatId, _i18n.GetText(errorLang, "error_save_failed"), ct);
                             return true;
                         }
 
@@ -199,14 +204,14 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                             ? Formatting.Html(s1.Name!)
                             : $"{Formatting.Html(s1.Name!)} {Formatting.Html(s1.LastName)}";
 
+                        var savedLang = await ResolveLanguageAsync(s1.UserId, ct);
                         await SafeEditAsync(update, chatId,
-                            $"✅ Сохранено!\n\n🎂 <b>{fullName}</b>, {s1.Date:dd.MM.yyyy}",
+                            string.Format(_i18n.GetText(savedLang, "wizard_saved_birthday"), fullName, $"{s1.Date:dd.MM.yyyy}"),
                             ct, ParseMode.Html);
 
                         // Show main menu after save
-                        var savedLang = await ResolveLanguageAsync(s1.UserId, ct);
                         await _bot.SendTextMessageAsync(chatId,
-                            "Что дальше?",
+                            _i18n.GetText(savedLang, "wizard_next_action"),
                             replyMarkup: Keyboards.MainMenuKb(savedLang),
                             cancellationToken: ct);
 
@@ -218,14 +223,15 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
             if (text is not null && _store.TryGet(chatId, out var s))
             {
                 // Global cancel
-                if (text.Equals("❌ Отмена", StringComparison.OrdinalIgnoreCase) || text.Equals("/cancel"))
+                var lang = await ResolveLanguageAsync(s.UserId, ct);
+
+                if (IsCancel(text, lang) || text.Equals("/cancel", StringComparison.OrdinalIgnoreCase))
                 {
                     _store.Remove(chatId);
-                    var cancelLang = await ResolveLanguageAsync(s.UserId, ct);
-                    await _bot.SendTextMessageAsync(chatId, "❌ Отменено",
+                    await _bot.SendTextMessageAsync(chatId, _i18n.GetText(lang, "wizard_cancelled"),
                         replyMarkup: new ReplyKeyboardRemove(), cancellationToken: ct);
-                    await _bot.SendTextMessageAsync(chatId, "Что дальше?",
-                        replyMarkup: Keyboards.MainMenuKb(cancelLang), cancellationToken: ct);
+                    await _bot.SendTextMessageAsync(chatId, _i18n.GetText(lang, "wizard_next_action"),
+                        replyMarkup: Keyboards.MainMenuKb(lang), cancellationToken: ct);
                     return true;
                 }
 
@@ -239,8 +245,8 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                         if (name.Length is < 2 or > 64)
                         {
                             await _bot.SendTextMessageAsync(chatId,
-                                "Имя должно быть 2–64 символа. Попробуй ещё раз.",
-                                replyMarkup: NameKb, cancellationToken: ct);
+                                _i18n.GetText(lang, "wizard_name_length_error"),
+                                replyMarkup: NameKb(lang), cancellationToken: ct);
                             return true;
                         }
 
@@ -249,10 +255,11 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                         _store.Upsert(s);
 
                         await _bot.SendTextMessageAsync(chatId,
-                            $"👤 Имя: <b>{Formatting.Html(name)}</b>\n\n" +
-                            "Теперь введи <b>фамилию</b> (или нажми «Пропустить»).",
+                            string.Format(_i18n.GetText(lang, "wizard_name_saved"),
+                                Formatting.Html(name),
+                                _i18n.GetText(lang, "ask_lastname")),
                             parseMode: ParseMode.Html,
-                            replyMarkup: Keyboards.SkipCancelKb(await ResolveLanguageAsync(s.UserId, ct)),
+                            replyMarkup: Keyboards.SkipCancelKb(lang),
                             cancellationToken: ct);
 
                         return true;
@@ -261,7 +268,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                     case AddWizardStep.LastName:
                         if (text.StartsWith('/')) return false;
 
-                        if (text == "➡️ Пропустить")
+                        if (IsSkip(text, lang))
                         {
                             s.LastName = null;
                         }
@@ -271,8 +278,8 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                             if (ln.Length > 64)
                             {
                                 await _bot.SendTextMessageAsync(chatId,
-                                    "Фамилия слишком длинная (макс. 64 символа).",
-                                    replyMarkup: Keyboards.SkipCancelKb(await ResolveLanguageAsync(s.UserId, ct)),
+                                    _i18n.GetText(lang, "wizard_lastname_length_error"),
+                                    replyMarkup: Keyboards.SkipCancelKb(lang),
                                     cancellationToken: ct);
                                 return true;
                             }
@@ -286,7 +293,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                         // Send calendar for date picking
                         var now = DateTime.UtcNow;
                         await _bot.SendTextMessageAsync(chatId,
-                            "📅 Выбери <b>дату рождения</b> в календаре или введи вручную (<code>ДД.ММ.ГГГГ</code>).",
+                            _i18n.GetText(lang, "wizard_date_prompt"),
                             parseMode: ParseMode.Html,
                             replyMarkup: new ReplyKeyboardRemove(),
                             cancellationToken: ct);
@@ -299,8 +306,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                         if (!TryParseDate(text, out var date))
                         {
                             await _bot.SendTextMessageAsync(chatId,
-                                "Не понял дату. Введи <code>ДД.ММ</code> или <code>ДД.ММ.ГГГГ</code>, " +
-                                "или выбери день в календаре выше.",
+                                _i18n.GetText(lang, "wizard_date_parse_error"),
                                 parseMode: ParseMode.Html,
                                 cancellationToken: ct);
                             return true;
@@ -315,7 +321,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
 
                     // ④ Relation (optional)
                     case AddWizardStep.Relation:
-                        if (text == "➡️ Пропустить")
+                        if (IsSkip(text, lang))
                             s.Relation = null;
                         else
                             s.Relation = text.Replace("👪 ", "").Replace("❤️ ", "")
@@ -325,18 +331,15 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                         _store.Upsert(s);
 
                         await _bot.SendTextMessageAsync(chatId,
-                            "💡 Расскажи про <b>интересы/хобби</b> именинника " +
-                            "(для персональных поздравлений).\n\n" +
-                            "Например: <i>рыбалка, шахматы, кулинария</i>\n" +
-                            "Или нажми «Пропустить».",
+                            _i18n.GetText(lang, "ask_interests"),
                             parseMode: ParseMode.Html,
-                            replyMarkup: Keyboards.SkipCancelKb(await ResolveLanguageAsync(s.UserId, ct)),
+                            replyMarkup: Keyboards.SkipCancelKb(lang),
                             cancellationToken: ct);
                         return true;
 
                     // ⑤ Interests (optional)
                     case AddWizardStep.Interests:
-                        if (text == "➡️ Пропустить")
+                        if (IsSkip(text, lang))
                             s.Interests = null;
                         else
                             s.Interests = text.Trim();
@@ -382,26 +385,27 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
 
             if (data == "cal:cancel")
             {
+                var lang = await ResolveLanguageAsync(s.UserId, ct);
                 _store.Remove(chatId);
                 if (s.CalendarMessageId.HasValue)
                 {
                     await SafeEditCalendarAsync(chatId, s.CalendarMessageId.Value,
-                        "❌ Отменено", null, ct);
+                        _i18n.GetText(lang, "wizard_cancelled"), null, ct);
                 }
                 await SafeAnswerCq(cq.Id, ct: ct);
-                var cancelLang = await ResolveLanguageAsync(s.UserId, ct);
-                await _bot.SendTextMessageAsync(chatId, "Что дальше?",
-                    replyMarkup: Keyboards.MainMenuKb(cancelLang), cancellationToken: ct);
+                await _bot.SendTextMessageAsync(chatId, _i18n.GetText(lang, "wizard_next_action"),
+                    replyMarkup: Keyboards.MainMenuKb(lang), cancellationToken: ct);
                 return;
             }
 
             if (data == "cal:manual")
             {
                 // Switch to manual text entry mode
+                var lang = await ResolveLanguageAsync(s.UserId, ct);
                 if (s.CalendarMessageId.HasValue)
                 {
                     await SafeEditCalendarAsync(chatId, s.CalendarMessageId.Value,
-                        "⌨️ Введи дату вручную: <code>ДД.ММ.ГГГГ</code>", null, ct);
+                        _i18n.GetText(lang, "wizard_manual_date"), null, ct);
                 }
                 await SafeAnswerCq(cq.Id, ct: ct);
                 return;
@@ -411,13 +415,14 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
             if (data.StartsWith("cal:prev:", StringComparison.Ordinal) ||
                 data.StartsWith("cal:next:", StringComparison.Ordinal))
             {
+                var lang = await ResolveLanguageAsync(s.UserId, ct);
                 var parts = data[(data.IndexOf(':', 4) + 1)..].Split('-');
                 if (parts.Length == 2 &&
                     int.TryParse(parts[0], out var year) &&
                     int.TryParse(parts[1], out var month) &&
                     month is >= 1 and <= 12)
                 {
-                    var calendar = InlineCalendarBuilder.BuildMonthGrid(year, month);
+                    var calendar = InlineCalendarBuilder.BuildMonthGrid(year, month, lang);
                     if (s.CalendarMessageId.HasValue)
                     {
                         try
@@ -450,8 +455,9 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                     // Update calendar message to show selected date
                     if (s.CalendarMessageId.HasValue)
                     {
+                        var lang = await ResolveLanguageAsync(s.UserId, ct);
                         await SafeEditCalendarAsync(chatId, s.CalendarMessageId.Value,
-                            $"📅 Выбрана дата: <b>{date:dd.MM.yyyy}</b>", null, ct);
+                            string.Format(_i18n.GetText(lang, "wizard_selected_date"), $"{date:dd.MM.yyyy}"), null, ct);
                     }
 
                     await SafeAnswerCq(cq.Id, ct: ct);
@@ -465,7 +471,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
         catch (Exception ex)
         {
             _logger.LogError(ex, "Calendar callback error: {Data}", data);
-            await SafeAnswerCq(cq.Id, "Ошибка", ct);
+            await SafeAnswerCq(cq.Id, _i18n.GetText(await ResolveLanguageAsync(s.UserId, ct), "error_try_again"), ct);
         }
     }
 
@@ -473,47 +479,50 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
 
     private async Task AskRelation(long chatId, long userId, CancellationToken ct)
     {
+        var lang = await ResolveLanguageAsync(userId, ct);
         await _bot.SendTextMessageAsync(chatId,
-            "👥 <b>Кто этот человек для тебя?</b>\n" +
-            "Выбери кнопку или введи свой вариант.",
+            _i18n.GetText(lang, "ask_relation"),
             parseMode: ParseMode.Html,
-            replyMarkup: Keyboards.RelationKb(await ResolveLanguageAsync(userId, ct)),
+            replyMarkup: Keyboards.RelationKb(lang),
             cancellationToken: ct);
     }
 
     private async Task SendConfirmation(long chatId, AddBirthdayWizardSession s, CancellationToken ct)
     {
+        var lang = await ResolveLanguageAsync(s.UserId, ct);
         var fullName = string.IsNullOrWhiteSpace(s.LastName)
             ? Formatting.Html(s.Name!)
             : $"{Formatting.Html(s.Name!)} {Formatting.Html(s.LastName)}";
 
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("📋 <b>Проверим данные:</b>\n");
-        sb.AppendLine($"👤 <b>{fullName}</b>");
-        sb.AppendLine($"📅 {s.Date:dd.MM.yyyy}");
+        var relation = string.IsNullOrWhiteSpace(s.Relation)
+            ? ""
+            : $"👥 {Formatting.Html(s.Relation)}\n";
+        var interests = string.IsNullOrWhiteSpace(s.Interests)
+            ? ""
+            : $"💡 {Formatting.Html(s.Interests)}\n";
 
-        if (!string.IsNullOrWhiteSpace(s.Relation))
-            sb.AppendLine($"👥 {Formatting.Html(s.Relation)}");
+        var text = string.Format(
+            _i18n.GetText(lang, "confirm_summary"),
+            fullName,
+            $"{s.Date:dd.MM.yyyy}",
+            relation,
+            interests);
 
-        if (!string.IsNullOrWhiteSpace(s.Interests))
-            sb.AppendLine($"💡 {Formatting.Html(s.Interests)}");
-
-        sb.AppendLine("\nВсё верно?");
-
-        await _bot.SendTextMessageAsync(chatId, sb.ToString(),
+        await _bot.SendTextMessageAsync(chatId, text,
             parseMode: ParseMode.Html,
             replyMarkup: new ReplyKeyboardRemove(),
             cancellationToken: ct);
 
-        await _bot.SendTextMessageAsync(chatId, "Сохранить?",
-            replyMarkup: ConfirmKb, cancellationToken: ct);
+        await _bot.SendTextMessageAsync(chatId, _i18n.GetText(lang, "wizard_save_question"),
+            replyMarkup: ConfirmKb(lang), cancellationToken: ct);
     }
 
     private async Task SendCalendar(long chatId, AddBirthdayWizardSession s, int year, int month, CancellationToken ct)
     {
-        var calendar = InlineCalendarBuilder.BuildMonthGrid(year, month);
+        var lang = await ResolveLanguageAsync(s.UserId, ct);
+        var calendar = InlineCalendarBuilder.BuildMonthGrid(year, month, lang);
         var msg = await _bot.SendTextMessageAsync(chatId,
-            "📅 Выбери день:",
+            _i18n.GetText(lang, "calendar_select_day"),
             replyMarkup: calendar,
             cancellationToken: ct);
 
@@ -601,12 +610,20 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
         try
         {
             var user = await _users.GetByTelegramUserIdAsync(telegramUserId, ct);
-            return user?.Lang ?? Language.Ru;
+            return user?.Lang ?? Language.En;
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Failed to resolve language for user {UserId}", telegramUserId);
-            return Language.Ru;
+            return Language.En;
         }
     }
+
+    private bool IsSkip(string text, Language lang) =>
+        text.Equals(_i18n.GetText(lang, "skip"), StringComparison.OrdinalIgnoreCase) ||
+        text.Equals(_i18n.GetText(Language.Ru, "skip"), StringComparison.OrdinalIgnoreCase);
+
+    private bool IsCancel(string text, Language lang) =>
+        text.Equals(_i18n.GetText(lang, "cancel"), StringComparison.OrdinalIgnoreCase) ||
+        text.Equals(_i18n.GetText(Language.Ru, "cancel"), StringComparison.OrdinalIgnoreCase);
 }
