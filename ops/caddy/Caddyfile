@@ -1,4 +1,4 @@
-{$DOMAIN} {
+{$DOMAIN:bday-bot.duckdns.org} {
   # Telegram webhook endpoint
   handle /telegram/webhook {
     reverse_proxy app:8080
