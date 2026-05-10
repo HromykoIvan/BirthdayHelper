@@ -175,6 +175,53 @@ jobs:
           echo "Commit: ${{ github.sha }}"
           mkdir -p /opt/birthday
           cd /opt/birthday
+          ensure_docker() {
+            if command -v docker >/dev/null 2>&1; then
+              echo "Docker already installed"
+              return 0
+            fi
+            echo "Docker not found, installing..."
+            if command -v dnf >/dev/null 2>&1; then
+              dnf install -y docker
+              systemctl enable --now docker
+            elif command -v yum >/dev/null 2>&1; then
+              yum install -y docker
+              systemctl enable --now docker
+            elif command -v apt-get >/dev/null 2>&1; then
+              apt-get update -y
+              apt-get install -y docker.io
+              systemctl enable --now docker
+            else
+              echo "ERROR: unsupported package manager, cannot install docker"
+              exit 1
+            fi
+          }
+          ensure_compose() {
+            if docker compose version >/dev/null 2>&1; then
+              echo "Docker Compose plugin already available"
+              return 0
+            fi
+            echo "Docker Compose plugin not found, installing..."
+            ARCH=\$(uname -m)
+            case "\$ARCH" in
+              aarch64|arm64) COMPOSE_ARCH="aarch64" ;;
+              x86_64|amd64) COMPOSE_ARCH="x86_64" ;;
+              *)
+                echo "ERROR: unsupported architecture for compose plugin: \$ARCH"
+                exit 1
+                ;;
+            esac
+            mkdir -p /usr/local/lib/docker/cli-plugins
+            curl -fL "https://github.com/docker/compose/releases/download/v2.29.2/docker-compose-linux-\${COMPOSE_ARCH}" \
+              -o /usr/local/lib/docker/cli-plugins/docker-compose
+            chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+            if ! docker compose version >/dev/null 2>&1; then
+              echo "ERROR: docker compose is still unavailable after installation"
+              exit 1
+            fi
+          }
+          ensure_docker
+          ensure_compose
           echo "Logging into ECR..."
           aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${ECR}
           if [ ! -f .compose.env ]; then
