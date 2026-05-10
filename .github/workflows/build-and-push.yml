@@ -232,6 +232,16 @@ jobs:
               echo "\${KEY}=\${VALUE}" >> "\$FILE"
             fi
           }
+          sanitize_compose_env() {
+            FILE=".compose.env"
+            if [ ! -f "\$FILE" ]; then
+              return 0
+            fi
+            if grep -q '^\${KEY}=\${VALUE}$' "\$FILE" 2>/dev/null; then
+              echo "Removing legacy placeholder entries from .compose.env"
+              sed -i '/^\${KEY}=\${VALUE}$/d' "\$FILE"
+            fi
+          }
           echo "Logging into ECR..."
           aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${ECR}
           if [ ! -f .compose.env ]; then
@@ -245,6 +255,7 @@ jobs:
             echo "ACME_EMAIL=admin@example.com" >> .compose.env
             echo "Created .compose.env"
           fi
+          sanitize_compose_env
           DOMAIN_VAL=\$(grep '^DOMAIN=' .compose.env 2>/dev/null | head -1 | cut -d= -f2- || true)
           if [ -z "\$DOMAIN_VAL" ]; then
             DOMAIN_VAL=\$(grep '^DOMAIN=' /etc/environment 2>/dev/null | head -1 | cut -d= -f2- || true)
