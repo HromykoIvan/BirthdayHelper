@@ -222,6 +222,16 @@ jobs:
           }
           ensure_docker
           ensure_compose
+          upsert_compose_var() {
+            KEY="\$1"
+            VALUE="\$2"
+            FILE=".compose.env"
+            if grep -q "^\\\${KEY}=" "\$FILE" 2>/dev/null; then
+              sed -i "s#^\\\${KEY}=.*#\\\${KEY}=\\\${VALUE}#" "\$FILE"
+            else
+              echo "\\\${KEY}=\\\${VALUE}" >> "\$FILE"
+            fi
+          }
           echo "Logging into ECR..."
           aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${ECR}
           if [ ! -f .compose.env ]; then
@@ -235,6 +245,27 @@ jobs:
             echo "ACME_EMAIL=admin@example.com" >> .compose.env
             echo "Created .compose.env"
           fi
+          DOMAIN_VAL=\$(grep '^DOMAIN=' .compose.env 2>/dev/null | head -1 | cut -d= -f2- || true)
+          if [ -z "\$DOMAIN_VAL" ]; then
+            DOMAIN_VAL=\$(grep '^DOMAIN=' /etc/environment 2>/dev/null | head -1 | cut -d= -f2- || true)
+          fi
+          if [ -z "\$DOMAIN_VAL" ]; then
+            DOMAIN_VAL="bday-bot.duckdns.org"
+          fi
+          ACC_ID_VAL=\$(grep '^ACC_ID=' .compose.env 2>/dev/null | head -1 | cut -d= -f2- || true)
+          if [ -z "\$ACC_ID_VAL" ]; then
+            ACC_ID_VAL=\$(aws sts get-caller-identity --query Account --output text)
+          fi
+          ACME_EMAIL_VAL=\$(grep '^ACME_EMAIL=' .compose.env 2>/dev/null | head -1 | cut -d= -f2- || true)
+          if [ -z "\$ACME_EMAIL_VAL" ]; then
+            ACME_EMAIL_VAL="admin@example.com"
+          fi
+          upsert_compose_var "ACC_ID" "\$ACC_ID_VAL"
+          upsert_compose_var "REGION" "${{ env.AWS_REGION }}"
+          upsert_compose_var "ECR_REPO" "${{ env.ECR_REPO }}"
+          upsert_compose_var "DOMAIN" "\$DOMAIN_VAL"
+          upsert_compose_var "ACME_EMAIL" "\$ACME_EMAIL_VAL"
+          echo "Normalized .compose.env (DOMAIN=\$DOMAIN_VAL)"
           # Sync config files from repo (base64-encoded in GH Actions runner)
           echo "Syncing config files from repo..."
           mkdir -p ops/caddy
@@ -247,6 +278,7 @@ jobs:
           COMPOSE_FILE=docker-compose.yml
           # Regenerate .env from AWS Secrets Manager (unified or individual secrets)
           echo "Regenerating .env from secrets..."
+          export DOMAIN="\$DOMAIN_VAL"
           bash ./ops/env-from-secrets.sh
           if ! grep -q 'Mongo__ConnectionString' .env; then
             echo "ERROR: .env missing Mongo__ConnectionString after regeneration"
@@ -281,8 +313,8 @@ jobs:
           docker tag ${IMG_TAGGED} ${IMG} 2>/dev/null || true
           echo "Stopping old container..."
           docker compose -f \${COMPOSE_FILE} --env-file .compose.env down app || true
-          echo "Starting new container..."
-          docker compose -f \${COMPOSE_FILE} --env-file .compose.env up -d app
+          echo "Starting app and caddy..."
+          docker compose -f \${COMPOSE_FILE} --env-file .compose.env up -d caddy app
           echo "Cleaning up old images..."
           docker image prune -f || true
           # Register Telegram webhook (ensures secret_token is always in sync with .env)
@@ -301,7 +333,7 @@ jobs:
           fi
           sleep 3
           echo "Checking container status..."
-          docker compose -f \${COMPOSE_FILE} --env-file .compose.env ps app
+          docker compose -f \${COMPOSE_FILE} --env-file .compose.env ps app caddy
           CONTAINER_ID=\$(docker compose -f \${COMPOSE_FILE} --env-file .compose.env ps -q app 2>/dev/null || echo '')
           if [ -n "\$CONTAINER_ID" ]; then
             CONTAINER_STATUS=\$(docker inspect --format='{{.State.Status}}' \$CONTAINER_ID 2>/dev/null || echo unknown)
