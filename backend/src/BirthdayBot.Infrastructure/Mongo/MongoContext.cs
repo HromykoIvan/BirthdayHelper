@@ -5,18 +5,25 @@ using MongoDB.Bson.Serialization.Serializers;
 using BirthdayBot.Domain.Entities;
 using MongoDB.Bson.Serialization.IdGenerators;
 using BirthdayBot.Infrastructure.Options;
+using Microsoft.Extensions.Logging;
+using System.Threading;
 
 namespace BirthdayBot.Infrastructure.Mongo;
 
 public class MongoContext
 {
+    private readonly ILogger<MongoContext> _logger;
+    private readonly SemaphoreSlim _indexesLock = new(1, 1);
+    private volatile bool _indexesEnsured;
+
     public IMongoDatabase Database { get; }
     public IMongoCollection<User> Users => Database.GetCollection<User>("users");
     public IMongoCollection<Birthday> Birthdays => Database.GetCollection<Birthday>("birthdays");
     public IMongoCollection<DeliveryLog> DeliveryLogs => Database.GetCollection<DeliveryLog>("delivery_logs");
 
-    public MongoContext(IOptions<MongoOptions> options)
+    public MongoContext(IOptions<MongoOptions> options, ILogger<MongoContext> logger)
     {
+        _logger = logger;
         var conn = options.Value.ConnectionString;
         var mongo = new MongoClient(conn);
         Database = mongo.GetDatabase(options.Value.Database);
@@ -41,31 +48,50 @@ public class MongoContext
                 cm.MapIdMember(x => x.Id).SetIdGenerator(ObjectIdGenerator.Instance);
             });
         }
-
-        EnsureIndexes();
     }
 
-    private void EnsureIndexes()
+    public async Task EnsureIndexesAsync(CancellationToken ct = default)
     {
+        if (_indexesEnsured)
+        {
+            return;
+        }
+
+        await _indexesLock.WaitAsync(ct);
+        try
+        {
+            if (_indexesEnsured)
+            {
+                return;
+            }
+
         var usersIdx = new CreateIndexModel<User>(
             Builders<User>.IndexKeys.Ascending(u => u.TelegramUserId),
             new CreateIndexOptions { Unique = true, Name = "ux_users_telegram_id" });
-        Users.Indexes.CreateOne(usersIdx);
+            await Users.Indexes.CreateOneAsync(usersIdx, cancellationToken: ct);
 
         var bUserIdx = new CreateIndexModel<Birthday>(
             Builders<Birthday>.IndexKeys.Ascending(b => b.UserId),
             new CreateIndexOptions { Name = "ix_birthdays_user" });
-        Birthdays.Indexes.CreateOne(bUserIdx);
+            await Birthdays.Indexes.CreateOneAsync(bUserIdx, cancellationToken: ct);
 
         var bUniqueName = new CreateIndexModel<Birthday>(
             Builders<Birthday>.IndexKeys.Ascending(b => b.UserId).Ascending(b => b.Name),
             new CreateIndexOptions { Name = "ux_birthdays_user_name", Unique = false }
         );
-        Birthdays.Indexes.CreateOne(bUniqueName);
+            await Birthdays.Indexes.CreateOneAsync(bUniqueName, cancellationToken: ct);
 
         var logsIdx = new CreateIndexModel<DeliveryLog>(
             Builders<DeliveryLog>.IndexKeys.Ascending(l => l.UserId),
             new CreateIndexOptions { Name = "ix_logs_user" });
-        DeliveryLogs.Indexes.CreateOne(logsIdx);
+            await DeliveryLogs.Indexes.CreateOneAsync(logsIdx, cancellationToken: ct);
+
+            _indexesEnsured = true;
+            _logger.LogInformation("MongoDB indexes are ensured.");
+        }
+        finally
+        {
+            _indexesLock.Release();
+        }
     }
 }

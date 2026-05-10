@@ -203,13 +203,30 @@ jobs:
           bash ./ops/env-from-secrets.sh
           if ! grep -q 'Mongo__ConnectionString' .env; then
             echo "ERROR: .env missing Mongo__ConnectionString after regeneration"
-            cat .env
             exit 1
           fi
           if ! grep -q 'Bot__Token' .env; then
             echo "ERROR: .env missing Bot__Token after regeneration"
-            cat .env
             exit 1
+          fi
+          MONGO_URI=\$(grep '^Mongo__ConnectionString=' .env | head -1 | cut -d= -f2- || true)
+          if [ -z "\$MONGO_URI" ]; then
+            echo "ERROR: Mongo__ConnectionString value is empty"
+            exit 1
+          fi
+          MONGO_HOST=\$(python3 - "\$MONGO_URI" <<'PY'
+          import sys
+          from urllib.parse import urlsplit
+          uri = sys.argv[1]
+          u = urlsplit(uri)
+          host = u.hostname or ""
+          if not host and u.netloc:
+              host = u.netloc.rsplit("@", 1)[-1].split(",", 1)[0].split(":", 1)[0]
+          print(host)
+          PY
+          )
+          if [ -n "\$MONGO_HOST" ]; then
+            echo "Mongo host from env: \$MONGO_HOST"
           fi
           echo ".env regenerated successfully"
           echo "Pulling image: ${IMG_TAGGED}..."
@@ -382,7 +399,7 @@ jobs:
           set -e
           cd /opt/birthday || exit 1
           echo "=== Smart Health Verification ==="
-          MAX_ATTEMPTS=18
+          MAX_ATTEMPTS=36
           SLEEP_SECONDS=5
           ATTEMPT=1
           APP_OK=0

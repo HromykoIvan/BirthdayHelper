@@ -3,6 +3,11 @@ set -euo pipefail
 REGION="${REGION:-eu-central-1}"
 DOMAIN="${DOMAIN:-bday-bot.duckdns.org}"
 
+fail() {
+  echo "[error] $*" >&2
+  exit 1
+}
+
 # Try unified secret first, fallback to individual secrets for backward compatibility
 UNIFIED_SECRET=$(aws secretsmanager get-secret-value \
   --region "$REGION" \
@@ -44,10 +49,47 @@ MONGO_URI="$(get_secret birthday-bot/mongo-url)"
 WEBHOOK_SECRET="$(get_secret birthday-bot/webhook-secret || echo '')"
 DUCKDNS_TOKEN="$(get_secret birthday-bot/duckdns-token || echo '')"
 fi
-# Extract database name from URI (strip query parameters for Atlas compatibility)
-DB_NAME="${MONGO_URI##*/}"
-DB_NAME="${DB_NAME%%\?*}"  # Remove query parameters (e.g., ?retryWrites=true&w=majority)
+
+if [ -z "${TELEGRAM_TOKEN:-}" ] || [ "${TELEGRAM_TOKEN}" = "null" ]; then
+  fail "telegram token is empty in resolved secrets"
+fi
+
+if [ -z "${MONGO_URI:-}" ] || [ "${MONGO_URI}" = "null" ]; then
+  fail "mongo connection string is empty in resolved secrets"
+fi
+
+case "$MONGO_URI" in
+  mongodb://*|mongodb+srv://*) ;;
+  *) fail "mongo connection string must start with mongodb:// or mongodb+srv:// (got '${MONGO_URI%%:*}:...')" ;;
+esac
+
+# Extract DB name and host safely for both mongodb:// and mongodb+srv:// URIs.
+PARSED_MONGO=$(python3 - "$MONGO_URI" <<'PY'
+import sys
+from urllib.parse import urlsplit
+
+uri = sys.argv[1]
+u = urlsplit(uri)
+db = (u.path or "").lstrip("/").split("/", 1)[0]
+if not db:
+    db = "birthdays"
+
+host = u.hostname or ""
+if not host and u.netloc:
+    host = u.netloc.rsplit("@", 1)[-1].split(",", 1)[0]
+    host = host.split(":", 1)[0]
+
+print(db)
+print(host)
+PY
+)
+DB_NAME="$(echo "$PARSED_MONGO" | sed -n '1p')"
+MONGO_HOST="$(echo "$PARSED_MONGO" | sed -n '2p')"
 : "${DB_NAME:=birthdays}"
+
+if [ -n "$MONGO_HOST" ]; then
+  echo "[info] Resolved Mongo host: ${MONGO_HOST}" >&2
+fi
 
 # Preserve mongo-express password across .env regenerations (generate once)
 ME_PASS=""
