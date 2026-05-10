@@ -23,7 +23,26 @@ env:
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore BirthdayBot.sln
+
+      - name: Run unit tests
+        run: dotnet test backend/tests/BirthdayBot.Tests/BirthdayBot.Tests.csproj --configuration Release --no-restore --nologo
+
   build-and-push:
+    needs: test
     runs-on: ubuntu-latest
 
     steps:
