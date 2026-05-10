@@ -17,7 +17,7 @@ namespace BirthdayBot.Application.Services;
 
 /// <summary>
 /// Multi-step wizard for adding a birthday:
-/// Name → LastName → Date (calendar) → Relation → Interests → Confirm.
+/// Name → LastName → Date (day/month/year pickers) → Relation → Interests → Confirm.
 /// </summary>
 public sealed class AddBirthdayWizardFlow : IWizardFlow
 {
@@ -34,13 +34,6 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
 
     private ReplyKeyboardMarkup NameKb(Language lang) => new(new[]
     {
-        new KeyboardButton[] { _i18n.GetText(lang, "cancel") }
-    })
-    { ResizeKeyboard = true, OneTimeKeyboard = true };
-
-    private ReplyKeyboardMarkup DateKb(Language lang) => new(new[]
-    {
-        new KeyboardButton[] { $"📅 {_i18n.GetText(lang, "today")}", $"📅 {_i18n.GetText(lang, "tomorrow")}" },
         new KeyboardButton[] { _i18n.GetText(lang, "cancel") }
     })
     { ResizeKeyboard = true, OneTimeKeyboard = true };
@@ -102,16 +95,16 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                 return true;
             }
 
-            // ── Calendar navigation callbacks (cal:*) ──
-            if (update.CallbackQuery?.Data is { } cbData && cbData.StartsWith("cal:", StringComparison.Ordinal))
+            // ── Date picker callbacks (dp:*) ──
+            if (update.CallbackQuery?.Data is { } dpData && dpData.StartsWith("dp:", StringComparison.Ordinal))
             {
-                if (!_store.TryGet(chatId, out var calSession))
+                if (!_store.TryGet(chatId, out var dpSession))
                     return false;
 
-                if (calSession.Step != AddWizardStep.Date)
+                if (dpSession.Step != AddWizardStep.Date)
                     return false;
 
-                await HandleCalendarCallbackAsync(chatId, calSession, update.CallbackQuery, cbData, ct);
+                await HandleDatePickCallbackAsync(chatId, dpSession, update.CallbackQuery, dpData, ct);
                 return true;
             }
 
@@ -144,12 +137,16 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                     case "add:editdate":
                         s1.Step = AddWizardStep.Date;
                         s1.CalendarMessageId = null;
+                        s1.DatePickerDay = null;
+                        s1.DatePickerMonth = null;
+                        s1.DatePhase = DatePickerPhase.Day;
+                        s1.YearPage = 0;
                         _store.Upsert(s1);
                         var editDateLang = await ResolveLanguageAsync(s1.UserId, ct);
                         await SafeEditAsync(update, chatId,
                             _i18n.GetText(editDateLang, "wizard_edit_date_prompt"),
                             ct, ParseMode.Html);
-                        await SendCalendar(chatId, s1, DateTime.UtcNow.Year, DateTime.UtcNow.Month, ct);
+                        await SendDatePicker(chatId, s1, ct);
                         return true;
 
                     case "add:save" when s1.Name is not null && s1.Date is not null:
@@ -209,7 +206,6 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                             string.Format(_i18n.GetText(savedLang, "wizard_saved_birthday"), fullName, $"{s1.Date:dd.MM.yyyy}"),
                             ct, ParseMode.Html);
 
-                        // Show main menu after save
                         await _bot.SendTextMessageAsync(chatId,
                             _i18n.GetText(savedLang, "wizard_next_action"),
                             replyMarkup: Keyboards.MainMenuKb(savedLang),
@@ -222,7 +218,6 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
             // ── Text-based wizard steps ──
             if (text is not null && _store.TryGet(chatId, out var s))
             {
-                // Global cancel
                 var lang = await ResolveLanguageAsync(s.UserId, ct);
 
                 if (IsCancel(text, lang) || text.Equals("/cancel", StringComparison.OrdinalIgnoreCase))
@@ -239,7 +234,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                 {
                     // ① Name
                     case AddWizardStep.Name:
-                        if (text.StartsWith('/')) return false; // let other commands through
+                        if (text.StartsWith('/')) return false;
 
                         var name = text.Trim();
                         if (name.Length is < 2 or > 64)
@@ -288,21 +283,24 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
 
                         s.Step = AddWizardStep.Date;
                         s.CalendarMessageId = null;
+                        s.DatePickerDay = null;
+                        s.DatePickerMonth = null;
+                        s.DatePhase = DatePickerPhase.Day;
+                        s.YearPage = 0;
                         _store.Upsert(s);
 
-                        // Send calendar for date picking
-                        var now = DateTime.UtcNow;
                         await _bot.SendTextMessageAsync(chatId,
                             _i18n.GetText(lang, "wizard_date_prompt"),
                             parseMode: ParseMode.Html,
                             replyMarkup: new ReplyKeyboardRemove(),
                             cancellationToken: ct);
 
-                        await SendCalendar(chatId, s, now.Year, now.Month, ct);
+                        await SendDatePicker(chatId, s, ct);
                         return true;
 
-                    // ③ Date (text fallback — calendar is primary)
+                    // ③ Date step — handled by dp:* callbacks above; text input falls through
                     case AddWizardStep.Date:
+                        // Allow text fallback (e.g. "15.03.1990")
                         if (!TryParseDate(text, out var date))
                         {
                             await _bot.SendTextMessageAsync(chatId,
@@ -369,113 +367,199 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
         }
     }
 
-    // ── Calendar callback handler ──
+    // ════════════════════════════════════════════
+    //  Date picker callback handler (dp:*)
+    // ════════════════════════════════════════════
 
-    private async Task HandleCalendarCallbackAsync(
+    private async Task HandleDatePickCallbackAsync(
         long chatId, AddBirthdayWizardSession s,
         CallbackQuery cq, string data, CancellationToken ct)
     {
         try
         {
-            if (data == "cal:ignore")
-            {
-                await SafeAnswerCq(cq.Id, ct: ct);
-                return;
-            }
+            var lang = await ResolveLanguageAsync(s.UserId, ct);
 
-            if (data == "cal:cancel")
+            // ── Cancel ──────────────────────────────────────────────────────
+            if (data == "dp:cancel")
             {
-                var lang = await ResolveLanguageAsync(s.UserId, ct);
                 _store.Remove(chatId);
                 if (s.CalendarMessageId.HasValue)
-                {
-                    await SafeEditCalendarAsync(chatId, s.CalendarMessageId.Value,
+                    await SafeEditPickerAsync(chatId, s.CalendarMessageId.Value,
                         _i18n.GetText(lang, "wizard_cancelled"), null, ct);
-                }
                 await SafeAnswerCq(cq.Id, ct: ct);
                 await _bot.SendTextMessageAsync(chatId, _i18n.GetText(lang, "wizard_next_action"),
                     replyMarkup: Keyboards.MainMenuKb(lang), cancellationToken: ct);
                 return;
             }
 
-            if (data == "cal:manual")
+            // ── Day selected ─────────────────────────────────────────────────
+            if (data.StartsWith("dp:d:", StringComparison.Ordinal) &&
+                int.TryParse(data["dp:d:".Length..], out var day) &&
+                day is >= 1 and <= 31)
             {
-                // Switch to manual text entry mode
-                var lang = await ResolveLanguageAsync(s.UserId, ct);
-                if (s.CalendarMessageId.HasValue)
-                {
-                    await SafeEditCalendarAsync(chatId, s.CalendarMessageId.Value,
-                        _i18n.GetText(lang, "wizard_manual_date"), null, ct);
-                }
+                s.DatePickerDay = day;
+                s.DatePhase = DatePickerPhase.Month;
+                _store.Upsert(s);
+
+                var headerText = DatePickerBuilder.FormHeader(lang, day, null, false)
+                               + "\n\n" + _i18n.GetText(lang, "dp_pick_month");
+                await SafeEditPickerAsync(chatId, s.CalendarMessageId,
+                    headerText, DatePickerBuilder.MonthGrid(lang), ct);
                 await SafeAnswerCq(cq.Id, ct: ct);
                 return;
             }
 
-            // cal:prev:YYYY-MM or cal:next:YYYY-MM — navigate calendar
-            if (data.StartsWith("cal:prev:", StringComparison.Ordinal) ||
-                data.StartsWith("cal:next:", StringComparison.Ordinal))
+            // ── Month selected ───────────────────────────────────────────────
+            if (data.StartsWith("dp:m:", StringComparison.Ordinal) &&
+                int.TryParse(data["dp:m:".Length..], out var month) &&
+                month is >= 1 and <= 12)
             {
-                var lang = await ResolveLanguageAsync(s.UserId, ct);
-                var parts = data[(data.IndexOf(':', 4) + 1)..].Split('-');
-                if (parts.Length == 2 &&
-                    int.TryParse(parts[0], out var year) &&
-                    int.TryParse(parts[1], out var month) &&
-                    month is >= 1 and <= 12)
+                // Validate day against selected month (use a non-leap year for check)
+                var maxDay = MaxDayForMonth(month, null);
+                if (s.DatePickerDay.HasValue && s.DatePickerDay.Value > maxDay)
                 {
-                    var calendar = InlineCalendarBuilder.BuildMonthGrid(year, month, lang);
-                    if (s.CalendarMessageId.HasValue)
-                    {
-                        try
-                        {
-                            await _bot.EditMessageReplyMarkupAsync(chatId, s.CalendarMessageId.Value,
-                                replyMarkup: calendar, cancellationToken: ct);
-                        }
-                        catch (ApiRequestException ex) when (
-                            ex.Message.Contains("message is not modified", StringComparison.OrdinalIgnoreCase))
-                        {
-                            // ignore
-                        }
-                    }
-                }
-
-                await SafeAnswerCq(cq.Id, ct: ct);
-                return;
-            }
-
-            // cal:day:YYYY-MM-DD — day selected
-            if (data.StartsWith("cal:day:", StringComparison.Ordinal))
-            {
-                var dateStr = data["cal:day:".Length..];
-                if (DateOnly.TryParse(dateStr, out var date))
-                {
-                    s.Date = date;
-                    s.Step = AddWizardStep.Relation;
+                    // Day is invalid for this month — bounce back to day picker
+                    s.DatePickerDay = null;
+                    s.DatePickerMonth = month;
+                    s.DatePhase = DatePickerPhase.Day;
                     _store.Upsert(s);
 
-                    // Update calendar message to show selected date
-                    if (s.CalendarMessageId.HasValue)
-                    {
-                        var lang = await ResolveLanguageAsync(s.UserId, ct);
-                        await SafeEditCalendarAsync(chatId, s.CalendarMessageId.Value,
-                            string.Format(_i18n.GetText(lang, "wizard_selected_date"), $"{date:dd.MM.yyyy}"), null, ct);
-                    }
-
+                    var errText = _i18n.GetText(lang, "dp_day_invalid_for_month")
+                                + "\n\n" + _i18n.GetText(lang, "dp_pick_day");
+                    await SafeEditPickerAsync(chatId, s.CalendarMessageId,
+                        errText, DatePickerBuilder.DayGrid(lang), ct);
                     await SafeAnswerCq(cq.Id, ct: ct);
-                    await AskRelation(chatId, s.UserId, ct);
                     return;
                 }
+
+                s.DatePickerMonth = month;
+                s.DatePhase = DatePickerPhase.Year;
+                s.YearPage = 0;
+                _store.Upsert(s);
+
+                var headerText = DatePickerBuilder.FormHeader(lang, s.DatePickerDay, month, true)
+                               + "\n\n" + _i18n.GetText(lang, "dp_pick_year");
+                await SafeEditPickerAsync(chatId, s.CalendarMessageId,
+                    headerText, DatePickerBuilder.YearGrid(lang, 0), ct);
+                await SafeAnswerCq(cq.Id, ct: ct);
+                return;
+            }
+
+            // ── Year page navigation ─────────────────────────────────────────
+            if (data.StartsWith("dp:yp:", StringComparison.Ordinal) &&
+                int.TryParse(data["dp:yp:".Length..], out var page))
+            {
+                s.YearPage = page;
+                _store.Upsert(s);
+
+                var headerText = DatePickerBuilder.FormHeader(lang, s.DatePickerDay, s.DatePickerMonth, true)
+                               + "\n\n" + _i18n.GetText(lang, "dp_pick_year");
+                await SafeEditPickerAsync(chatId, s.CalendarMessageId,
+                    headerText, DatePickerBuilder.YearGrid(lang, page), ct);
+                await SafeAnswerCq(cq.Id, ct: ct);
+                return;
+            }
+
+            // ── Year selected ────────────────────────────────────────────────
+            if (data.StartsWith("dp:y:", StringComparison.Ordinal) &&
+                int.TryParse(data["dp:y:".Length..], out var year))
+            {
+                await FinaliseDateAsync(chatId, s, year, lang, cq.Id, ct);
+                return;
+            }
+
+            // ── No year ──────────────────────────────────────────────────────
+            if (data == "dp:noyear")
+            {
+                await FinaliseDateAsync(chatId, s, year: null, lang, cq.Id, ct);
+                return;
+            }
+
+            // ── Back to day picker ───────────────────────────────────────────
+            if (data == "dp:back:d")
+            {
+                s.DatePickerDay = null;
+                s.DatePhase = DatePickerPhase.Day;
+                _store.Upsert(s);
+
+                var headerText = DatePickerBuilder.FormHeader(lang, null, null, false)
+                               + "\n\n" + _i18n.GetText(lang, "dp_pick_day");
+                await SafeEditPickerAsync(chatId, s.CalendarMessageId,
+                    headerText, DatePickerBuilder.DayGrid(lang), ct);
+                await SafeAnswerCq(cq.Id, ct: ct);
+                return;
+            }
+
+            // ── Back to month picker ─────────────────────────────────────────
+            if (data == "dp:back:m")
+            {
+                s.DatePickerMonth = null;
+                s.DatePhase = DatePickerPhase.Month;
+                _store.Upsert(s);
+
+                var headerText = DatePickerBuilder.FormHeader(lang, s.DatePickerDay, null, false)
+                               + "\n\n" + _i18n.GetText(lang, "dp_pick_month");
+                await SafeEditPickerAsync(chatId, s.CalendarMessageId,
+                    headerText, DatePickerBuilder.MonthGrid(lang), ct);
+                await SafeAnswerCq(cq.Id, ct: ct);
+                return;
             }
 
             await SafeAnswerCq(cq.Id, ct: ct);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Calendar callback error: {Data}", data);
-            await SafeAnswerCq(cq.Id, _i18n.GetText(await ResolveLanguageAsync(s.UserId, ct), "error_try_again"), ct);
+            _logger.LogError(ex, "DatePicker callback error: {Data}", data);
+            await SafeAnswerCq(cq.Id,
+                _i18n.GetText(await ResolveLanguageAsync(s.UserId, ct), "error_try_again"), ct);
         }
     }
 
-    // ── Shared prompts ──
+    private async Task FinaliseDateAsync(
+        long chatId, AddBirthdayWizardSession s,
+        int? year, Language lang, string cqId, CancellationToken ct)
+    {
+        if (s.DatePickerDay is null || s.DatePickerMonth is null)
+        {
+            await SafeAnswerCq(cqId, ct: ct);
+            return;
+        }
+
+        var resolvedYear = year ?? 1;
+        DateOnly date;
+        try
+        {
+            var maxDay = MaxDayForMonth(s.DatePickerMonth.Value, year);
+            var clampedDay = Math.Min(s.DatePickerDay.Value, maxDay);
+            date = new DateOnly(resolvedYear, s.DatePickerMonth.Value, clampedDay);
+        }
+        catch
+        {
+            await SafeAnswerCq(cqId, ct: ct);
+            return;
+        }
+
+        s.Date = date;
+        s.Step = AddWizardStep.Relation;
+        _store.Upsert(s);
+
+        var yearDisplay = year.HasValue ? year.Value.ToString() : "—";
+        var monthName = DatePickerBuilder.MonthNames(lang)[s.DatePickerMonth.Value];
+        var summary = lang switch
+        {
+            Language.Pl => $"📅 Wybrano: <b>{s.DatePickerDay} {monthName}" + (year.HasValue ? $" {year}" : "") + "</b>",
+            Language.En => $"📅 Selected: <b>{s.DatePickerDay} {monthName}" + (year.HasValue ? $" {year}" : "") + "</b>",
+            _            => $"📅 Выбрано: <b>{s.DatePickerDay} {monthName}" + (year.HasValue ? $" {year}" : "") + "</b>",
+        };
+
+        if (s.CalendarMessageId.HasValue)
+            await SafeEditPickerAsync(chatId, s.CalendarMessageId.Value, summary, null, ct);
+
+        await SafeAnswerCq(cqId, ct: ct);
+        await AskRelation(chatId, s.UserId, ct);
+    }
+
+    // ── Shared prompts ────────────────────────────────────────────────────────
 
     private async Task AskRelation(long chatId, long userId, CancellationToken ct)
     {
@@ -501,10 +585,16 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
             ? ""
             : $"💡 {Formatting.Html(s.Interests)}\n";
 
+        var dateDisplay = s.Date.HasValue
+            ? (s.Date.Value.Year == 1
+                ? $"{s.Date.Value:dd.MM}"
+                : $"{s.Date.Value:dd.MM.yyyy}")
+            : "—";
+
         var text = string.Format(
             _i18n.GetText(lang, "confirm_summary"),
             fullName,
-            $"{s.Date:dd.MM.yyyy}",
+            dateDisplay,
             relation,
             interests);
 
@@ -517,20 +607,29 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
             replyMarkup: ConfirmKb(lang), cancellationToken: ct);
     }
 
-    private async Task SendCalendar(long chatId, AddBirthdayWizardSession s, int year, int month, CancellationToken ct)
+    private async Task SendDatePicker(long chatId, AddBirthdayWizardSession s, CancellationToken ct)
     {
         var lang = await ResolveLanguageAsync(s.UserId, ct);
-        var calendar = InlineCalendarBuilder.BuildMonthGrid(year, month, lang);
-        var msg = await _bot.SendTextMessageAsync(chatId,
-            _i18n.GetText(lang, "calendar_select_day"),
-            replyMarkup: calendar,
+        var header = DatePickerBuilder.FormHeader(lang, null, null, false)
+                   + "\n\n" + _i18n.GetText(lang, "dp_pick_day");
+
+        var msg = await _bot.SendTextMessageAsync(chatId, header,
+            parseMode: ParseMode.Html,
+            replyMarkup: DatePickerBuilder.DayGrid(lang),
             cancellationToken: ct);
 
         s.CalendarMessageId = msg.MessageId;
         _store.Upsert(s);
     }
 
-    // ── Date parsing ──
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static int MaxDayForMonth(int month, int? year)
+    {
+        // Use a known non-leap year when year is unknown, or the actual year
+        var y = year ?? 2001;
+        return DateTime.DaysInMonth(y, month);
+    }
 
     private static bool TryParseDate(string input, out DateOnly date)
     {
@@ -547,14 +646,14 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
         var m = DateRegex.Match(input);
         if (!m.Success) { date = default; return false; }
 
-        var d = int.Parse(m.Groups["d"].Value);
+        var d  = int.Parse(m.Groups["d"].Value);
         var mm = int.Parse(m.Groups["m"].Value);
-        var year = m.Groups["y"].Success ? int.Parse(m.Groups["y"].Value) : DateTime.UtcNow.Year;
+        var yr = m.Groups["y"].Success ? int.Parse(m.Groups["y"].Value) : DateTime.UtcNow.Year;
 
-        return DateOnly.TryParse($"{year:D4}-{mm:D2}-{d:D2}", out date);
+        return DateOnly.TryParse($"{yr:D4}-{mm:D2}-{d:D2}", out date);
     }
 
-    // ── Safe Telegram API wrappers ──
+    // ── Safe Telegram API wrappers ────────────────────────────────────────────
 
     private async Task SafeEditAsync(Update update, long chatId, string text, CancellationToken ct, ParseMode? mode = null)
     {
@@ -581,11 +680,12 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
         }
     }
 
-    private async Task SafeEditCalendarAsync(long chatId, int msgId, string text, InlineKeyboardMarkup? kb, CancellationToken ct)
+    private async Task SafeEditPickerAsync(long chatId, int? msgId, string text, InlineKeyboardMarkup? kb, CancellationToken ct)
     {
+        if (msgId is null) return;
         try
         {
-            await _bot.EditMessageTextAsync(chatId, msgId, text,
+            await _bot.EditMessageTextAsync(chatId, msgId.Value, text,
                 parseMode: ParseMode.Html, replyMarkup: kb, cancellationToken: ct);
         }
         catch (ApiRequestException ex) when (
@@ -595,7 +695,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Failed to edit calendar message");
+            _logger.LogDebug(ex, "Failed to edit picker message");
         }
     }
 

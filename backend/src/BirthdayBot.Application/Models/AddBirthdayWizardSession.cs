@@ -4,6 +4,9 @@ namespace BirthdayBot.Application.Models;
 
 public enum AddWizardStep { Name, LastName, Date, TimeZone, Relation, Interests, GreetingLanguage, Confirm }
 
+/// <summary>Which sub-step of the date form the user is on.</summary>
+public enum DatePickerPhase { Day, Month, Year }
+
 public sealed class AddBirthdayWizardSession
 {
     public long ChatId { get; }
@@ -19,12 +22,23 @@ public sealed class AddBirthdayWizardSession
     public string? Interests { get; set; }
     public Language? GreetingLanguage { get; set; }
 
-    public bool WaitingCity { get; set; }     // waiting for city text input
+    public bool WaitingCity { get; set; }
 
-    /// <summary>
-    /// MessageId of the calendar message so we can edit it when navigating months.
-    /// </summary>
+    // ── Date picker state ──────────────────────────────────────────────────
+    /// <summary>Id of the "date form" message so we can edit it in place.</summary>
     public int? CalendarMessageId { get; set; }
+
+    /// <summary>Day (1-31) selected during the date-picker flow.</summary>
+    public int? DatePickerDay { get; set; }
+
+    /// <summary>Month (1-12) selected during the date-picker flow.</summary>
+    public int? DatePickerMonth { get; set; }
+
+    /// <summary>Current sub-step of the date picker.</summary>
+    public DatePickerPhase DatePhase { get; set; } = DatePickerPhase.Day;
+
+    /// <summary>Current page of the year picker (0 = most recent years).</summary>
+    public int YearPage { get; set; } = 0;
 
     public AddBirthdayWizardSession(long chatId, long userId)
     { ChatId = chatId; UserId = userId; }

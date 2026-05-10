@@ -488,6 +488,23 @@ public class LocalizationService : ILocalizationService
         {(Language.Ru, "error_try_again"), "Произошла ошибка. Попробуйте ещё раз."},
         {(Language.Pl, "error_try_again"), "Wystąpił błąd. Spróbuj ponownie."},
         {(Language.En, "error_try_again"), "An error occurred. Please try again."},
+
+        // Date picker form
+        {(Language.Ru, "dp_pick_day"),   "👇 Выбери <b>число</b>:"},
+        {(Language.Pl, "dp_pick_day"),   "👇 Wybierz <b>dzień</b>:"},
+        {(Language.En, "dp_pick_day"),   "👇 Choose the <b>day</b>:"},
+
+        {(Language.Ru, "dp_pick_month"), "👇 Выбери <b>месяц</b>:"},
+        {(Language.Pl, "dp_pick_month"), "👇 Wybierz <b>miesiąc</b>:"},
+        {(Language.En, "dp_pick_month"), "👇 Choose the <b>month</b>:"},
+
+        {(Language.Ru, "dp_pick_year"),  "👇 Выбери <b>год</b> или пропусти, если он неизвестен:"},
+        {(Language.Pl, "dp_pick_year"),  "👇 Wybierz <b>rok</b> lub pomiń, jeśli nie jest znany:"},
+        {(Language.En, "dp_pick_year"),  "👇 Choose the <b>year</b>, or skip if unknown:"},
+
+        {(Language.Ru, "dp_day_invalid_for_month"), "⚠️ В выбранном месяце нет такого числа. Выбери число снова."},
+        {(Language.Pl, "dp_day_invalid_for_month"), "⚠️ Ten dzień nie istnieje w wybranym miesiącu. Wybierz dzień ponownie."},
+        {(Language.En, "dp_day_invalid_for_month"), "⚠️ That day doesn't exist in the selected month. Please pick the day again."},
     };
 
     public string GetText(Language lang, string key)
