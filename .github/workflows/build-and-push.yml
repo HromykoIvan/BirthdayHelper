@@ -226,10 +226,10 @@ jobs:
             KEY="\$1"
             VALUE="\$2"
             FILE=".compose.env"
-            if grep -q "^\\\${KEY}=" "\$FILE" 2>/dev/null; then
-              sed -i "s#^\\\${KEY}=.*#\\\${KEY}=\\\${VALUE}#" "\$FILE"
+            if grep -q "^\${KEY}=" "\$FILE" 2>/dev/null; then
+              sed -i "s#^\${KEY}=.*#\${KEY}=\${VALUE}#" "\$FILE"
             else
-              echo "\\\${KEY}=\\\${VALUE}" >> "\$FILE"
+              echo "\${KEY}=\${VALUE}" >> "\$FILE"
             fi
           }
           echo "Logging into ECR..."
