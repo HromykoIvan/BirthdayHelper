@@ -189,8 +189,7 @@ export class BirthdayBotStack extends Stack {
         instancesDistribution: {
           onDemandBaseCapacity: 0,
           onDemandPercentageAboveBaseCapacity: 0,
-          spotAllocationStrategy: 'capacity-optimized-prioritized',
-          spotInstancePools: 2
+          spotAllocationStrategy: 'capacity-optimized-prioritized'
         },
         launchTemplate: {
           launchTemplateSpecification: {
