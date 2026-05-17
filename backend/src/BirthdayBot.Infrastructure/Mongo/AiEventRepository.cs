@@ -17,6 +17,11 @@ public sealed class AiEventRepository : IAiEventRepository
         return aiEvent;
     }
 
+    public async Task<AiEvent?> GetByIdAsync(ObjectId eventId, CancellationToken ct = default)
+    {
+        return await _ctx.AiEvents.Find(x => x.Id == eventId).FirstOrDefaultAsync(ct);
+    }
+
     public async Task<List<AiEvent>> ListRecentIntentEventsAsync(int take = 200, bool onlyUnlabeled = false, CancellationToken ct = default)
     {
         var filter = Builders<AiEvent>.Filter.Eq(x => x.EventType, "intent");

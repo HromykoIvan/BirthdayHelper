@@ -164,6 +164,8 @@ You can also run ad-hoc greeting tests in chat with free text, for example:
 
 - `сгенерируй поздравление для Сергей Калугин на 23 февраля`
 
+In the bot UI, use the `🧪 Test greeting` button and then `🔄 Regenerate` to request another variant quickly.
+
 ### AI memory and eval loop
 
 AI runtime events are persisted to MongoDB collection `ai_events`:
@@ -242,7 +244,7 @@ For stricter high availability requirements (very low downtime), add a load bala
   Check `docker compose logs prometheus` and ensure app metrics are available on internal target (`app:8080/metrics` or `api:8080/metrics`).
 
 - **Grafana URL returns 404**  
-  Ensure rollout uses the latest Caddy/Compose config and starts `grafana` + `prometheus` services (not only `app` and `caddy`).
+  Ensure rollout uses the latest Caddy/Compose config and starts `grafana` + `prometheus` services (not only `app` and `caddy`). For EC2 compose, Caddy must read `/opt/birthday/ops/caddy/Caddyfile`.
 
 - **Local AI fallback too often**  
   Verify local model runtime availability and timeout settings in `LocalAi` options.

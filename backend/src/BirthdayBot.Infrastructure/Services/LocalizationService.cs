@@ -104,6 +104,10 @@ public class LocalizationService : ILocalizationService
         {(Language.Pl, "menu_help"), "❓ Pomoc"},
         {(Language.En, "menu_help"), "❓ Help"},
 
+        {(Language.Ru, "menu_test_greeting"), "🧪 Тест поздравления"},
+        {(Language.Pl, "menu_test_greeting"), "🧪 Test życzeń"},
+        {(Language.En, "menu_test_greeting"), "🧪 Test greeting"},
+
         {(Language.Ru, "back_to_menu"), "🏠 Главное меню"},
         {(Language.Pl, "back_to_menu"), "🏠 Menu główne"},
         {(Language.En, "back_to_menu"), "🏠 Main menu"},
@@ -512,6 +516,14 @@ public class LocalizationService : ILocalizationService
         {(Language.Ru, "ai_test_greeting_title"), "Тестовое поздравление"},
         {(Language.Pl, "ai_test_greeting_title"), "Testowe życzenia"},
         {(Language.En, "ai_test_greeting_title"), "Test greeting"},
+
+        {(Language.Ru, "ai_regenerate"), "🔄 Перегенерировать"},
+        {(Language.Pl, "ai_regenerate"), "🔄 Regeneruj"},
+        {(Language.En, "ai_regenerate"), "🔄 Regenerate"},
+
+        {(Language.Ru, "ai_fallback_notice"), "Использован базовый шаблон: LLM недоступна."},
+        {(Language.Pl, "ai_fallback_notice"), "Użyto szablonu bazowego: LLM jest niedostępny."},
+        {(Language.En, "ai_fallback_notice"), "Base template was used: LLM is unavailable."},
     };
 
     public string GetText(Language lang, string key)

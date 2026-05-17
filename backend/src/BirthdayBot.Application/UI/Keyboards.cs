@@ -56,6 +56,10 @@ public static class Keyboards
             {
                 InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_settings"), "menu:settings"),
                 InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_help"), "menu:help"),
+            },
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_test_greeting"), "menu:test_greeting"),
             }
         });
     }
@@ -67,6 +71,21 @@ public static class Keyboards
         return new(new[]
         {
             new[] { InlineKeyboardButton.WithCallbackData(GetText(lang, "back_to_menu"), "menu:home") }
+        });
+    }
+
+    public static InlineKeyboardMarkup TestGreetingKb(Language lang, string regenerateCallbackData)
+    {
+        return new(new[]
+        {
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_regenerate"), regenerateCallbackData)
+            },
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "back_to_menu"), "menu:home")
+            }
         });
     }
 
