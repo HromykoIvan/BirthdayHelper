@@ -18,6 +18,16 @@ public sealed class AiEvent
 
     public string? OutputText { get; set; }
 
+    public string? EntityName { get; set; }
+
+    public string? Occasion { get; set; }
+
+    public ObjectId? BirthdayId { get; set; }
+
+    public ObjectId? ParentEventId { get; set; }
+
+    public string? UserComment { get; set; }
+
     public string? ParsedIntent { get; set; }
 
     public string? ExpectedIntent { get; set; }
@@ -33,6 +43,8 @@ public sealed class AiEvent
     public string? ModelSource { get; set; }
 
     public double? LatencyMs { get; set; }
+
+    public bool IsAcceptedExample { get; set; }
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 }

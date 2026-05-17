@@ -48,6 +48,7 @@ public sealed class UpdateHandler : IUpdateHandler
     private readonly IUserUpdateRateLimiter _userRateLimiter;
     private readonly AiMetrics _metrics;
     private readonly IAiEventRepository _aiEvents;
+    private readonly IAiFeedbackSessionStore _aiFeedbackSessions;
     private readonly PromptProfileOptions _promptProfiles;
 
     public UpdateHandler(
@@ -64,6 +65,7 @@ public sealed class UpdateHandler : IUpdateHandler
         IUserUpdateRateLimiter userRateLimiter,
         AiMetrics metrics,
         IAiEventRepository aiEvents,
+        IAiFeedbackSessionStore aiFeedbackSessions,
         IOptions<PromptProfileOptions> promptProfiles,
         IDateTimeZoneProvider? tzdb = null)
     {
@@ -80,6 +82,7 @@ public sealed class UpdateHandler : IUpdateHandler
         _userRateLimiter = userRateLimiter;
         _metrics = metrics;
         _aiEvents = aiEvents;
+        _aiFeedbackSessions = aiFeedbackSessions;
         _promptProfiles = promptProfiles.Value;
         _tzdb = tzdb ?? DateTimeZoneProviders.Tzdb;
         
@@ -196,6 +199,13 @@ public sealed class UpdateHandler : IUpdateHandler
         }
 
         var user = await EnsureUser(msg.From!, ct);
+
+        if (!text.StartsWith("/", StringComparison.Ordinal) &&
+            _aiFeedbackSessions.TryGet(chatId, out var feedbackSession))
+        {
+            await HandleAiFeedbackCommentAsync(user, chatId, feedbackSession, text, ct);
+            return;
+        }
 
         if (text.StartsWith("/start", StringComparison.OrdinalIgnoreCase) ||
             text.StartsWith("/help", StringComparison.OrdinalIgnoreCase))
@@ -315,6 +325,17 @@ public sealed class UpdateHandler : IUpdateHandler
                 await SafeEditMessageAsync(chatId, cq.Message.MessageId,
                     _i18n.GetText(user.Lang, "help"),
                     ParseMode.Html, Keyboards.BackToMenuKb(user.Lang), ct);
+                break;
+
+            case "menu:test_greeting":
+                await GenerateGreetingPreviewAsync(
+                    user,
+                    chatId,
+                    cq.Message.MessageId,
+                    "Сергей Калугин",
+                    "23 февраля",
+                    replaceExistingMessage: true,
+                    ct: ct);
                 break;
         }
 
@@ -526,8 +547,51 @@ public sealed class UpdateHandler : IUpdateHandler
                     }
                 }
             }
+            else if (cq.Data is { } aiEventRegenerate && aiEventRegenerate.StartsWith("ai:improve:event:", StringComparison.Ordinal))
+            {
+                var eventIdText = aiEventRegenerate["ai:improve:event:".Length..];
+                if (!ObjectId.TryParse(eventIdText, out var eventId))
+                {
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
+                    return;
+                }
+
+                await RegenerateFromAiEventAsync(user, cq.Message!.Chat.Id, cq.Message.MessageId, eventId, userComment: null, ct);
+            }
+            else if (cq.Data is { } aiEventComment && aiEventComment.StartsWith("ai:comment:event:", StringComparison.Ordinal))
+            {
+                var eventIdText = aiEventComment["ai:comment:event:".Length..];
+                if (!ObjectId.TryParse(eventIdText, out var eventId))
+                {
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
+                    return;
+                }
+
+                _aiFeedbackSessions.Upsert(new AiFeedbackSession
+                {
+                    ChatId = cq.Message!.Chat.Id,
+                    SourceEventId = eventId
+                });
+
+                await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "ai_comment_prompt"), ct);
+                await _bot.SendTextMessageAsync(
+                    cq.Message.Chat.Id,
+                    _i18n.GetText(user.Lang, "ai_comment_prompt"),
+                    replyMarkup: Keyboards.BackToMenuKb(user.Lang),
+                    cancellationToken: ct);
+            }
+            else if (cq.Data is { } aiEventAccept && aiEventAccept.StartsWith("ai:accept:event:", StringComparison.Ordinal))
+            {
+                var eventIdText = aiEventAccept["ai:accept:event:".Length..];
+                if (ObjectId.TryParse(eventIdText, out var eventId))
+                {
+                    await _aiEvents.MarkAcceptedExampleAsync(eventId, true, ct);
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "ai_example_saved"), ct);
+                }
+            }
             else if (cq.Data is { } aiData && aiData.StartsWith("ai:improve:", StringComparison.Ordinal))
             {
+                // Backward compatibility for old messages where callback contains birthdayId only.
                 var idText = aiData["ai:improve:".Length..];
                 if (ObjectId.TryParse(idText, out var bid))
                 {
@@ -546,10 +610,11 @@ public sealed class UpdateHandler : IUpdateHandler
                     var improved = await _enhancer.EnhanceAsync(user, entry, draft, age, ct);
                     improveSw.Stop();
 
-                    await _aiEvents.CreateAsync(new AiEvent
+                    var aiEvent = await _aiEvents.CreateAsync(new AiEvent
                     {
                         UserId = user.Id,
                         TelegramUserId = user.TelegramUserId,
+                        BirthdayId = entry.Id,
                         EventType = "enhance",
                         InputText = draft,
                         OutputText = improved.Text,
@@ -560,14 +625,56 @@ public sealed class UpdateHandler : IUpdateHandler
                         LatencyMs = improveSw.Elapsed.TotalMilliseconds
                     }, ct);
 
-                    var text = $"✨ <b>{_i18n.GetText(user.Lang, "ai_improved_title")}</b>\n\n{Formatting.Html(improved.Text)}";
+                    var text = BuildRenderedGreeting(user.Lang, improved.Text, improved.IsFallback, _i18n.GetText(user.Lang, "ai_improved_title"));
                     await SafeEditMessageAsync(
                         cq.Message!.Chat.Id,
                         cq.Message.MessageId,
                         text,
                         ParseMode.Html,
-                        Keyboards.BackToMenuKb(user.Lang),
+                        Keyboards.ReminderGreetingActionsKb(user.Lang, aiEvent.Id.ToString()),
                         ct);
+                }
+            }
+            else if (cq.Data is { } testRegenerateData && testRegenerateData.StartsWith("ai:test:regen:", StringComparison.Ordinal))
+            {
+                var eventIdText = testRegenerateData["ai:test:regen:".Length..];
+                if (!ObjectId.TryParse(eventIdText, out var eventId))
+                {
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
+                    return;
+                }
+
+                await RegenerateFromAiEventAsync(user, cq.Message!.Chat.Id, cq.Message.MessageId, eventId, userComment: null, ct);
+            }
+            else if (cq.Data is { } testCommentData && testCommentData.StartsWith("ai:test:comment:", StringComparison.Ordinal))
+            {
+                var eventIdText = testCommentData["ai:test:comment:".Length..];
+                if (!ObjectId.TryParse(eventIdText, out var eventId))
+                {
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
+                    return;
+                }
+
+                _aiFeedbackSessions.Upsert(new AiFeedbackSession
+                {
+                    ChatId = cq.Message!.Chat.Id,
+                    SourceEventId = eventId
+                });
+
+                await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "ai_comment_prompt"), ct);
+                await _bot.SendTextMessageAsync(
+                    cq.Message.Chat.Id,
+                    _i18n.GetText(user.Lang, "ai_comment_prompt"),
+                    replyMarkup: Keyboards.BackToMenuKb(user.Lang),
+                    cancellationToken: ct);
+            }
+            else if (cq.Data is { } testAcceptData && testAcceptData.StartsWith("ai:test:accept:", StringComparison.Ordinal))
+            {
+                var eventIdText = testAcceptData["ai:test:accept:".Length..];
+                if (ObjectId.TryParse(eventIdText, out var eventId))
+                {
+                    await _aiEvents.MarkAcceptedExampleAsync(eventId, true, ct);
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "ai_example_saved"), ct);
                 }
             }
             else if (cq.Data is { } removeByNameData && removeByNameData.StartsWith("delete:name:confirm:", StringComparison.Ordinal))
@@ -1254,39 +1361,14 @@ public sealed class UpdateHandler : IUpdateHandler
 
             case UserIntentType.GenerateGreetingPreview when !string.IsNullOrWhiteSpace(intent.EntityName):
                 var occasion = string.IsNullOrWhiteSpace(intent.Occasion) ? "особый день" : intent.Occasion.Trim();
-                var previewBirthday = new Birthday
-                {
-                    UserId = user.Id,
-                    Name = intent.EntityName.Trim(),
-                    Date = DateOnly.FromDateTime(DateTime.UtcNow),
-                    Relation = "test"
-                };
-
-                var draft = BuildGreetingPreviewDraft(user.Lang, previewBirthday.FullName, occasion);
-                var enhanceSw = Stopwatch.StartNew();
-                var enhanced = await _enhancer.EnhanceAsync(user, previewBirthday, draft, age: 30, ct);
-                enhanceSw.Stop();
-
-                await _aiEvents.CreateAsync(new AiEvent
-                {
-                    UserId = user.Id,
-                    TelegramUserId = user.TelegramUserId,
-                    EventType = "enhance_test",
-                    InputText = draft,
-                    OutputText = enhanced.Text,
-                    IsFallback = enhanced.IsFallback,
-                    FallbackReason = enhanced.FallbackReason,
-                    PromptVersion = enhanced.PromptVersion,
-                    ModelSource = enhanced.ModelSource,
-                    LatencyMs = enhanceSw.Elapsed.TotalMilliseconds
-                }, ct);
-
-                var responseText = $"🧪 <b>{_i18n.GetText(user.Lang, "ai_test_greeting_title")}</b>\n\n{Formatting.Html(enhanced.Text)}";
-                await _bot.SendTextMessageAsync(chatId,
-                    responseText,
-                    parseMode: ParseMode.Html,
-                    replyMarkup: Keyboards.BackToMenuKb(user.Lang),
-                    cancellationToken: ct);
+                await GenerateGreetingPreviewAsync(
+                    user,
+                    chatId,
+                    messageId: null,
+                    intent.EntityName.Trim(),
+                    occasion,
+                    replaceExistingMessage: false,
+                    ct: ct);
                 return true;
 
             case UserIntentType.UpdateSettings when intent.Settings is not null:
@@ -1299,14 +1381,210 @@ public sealed class UpdateHandler : IUpdateHandler
         }
     }
 
+    private async Task GenerateGreetingPreviewAsync(
+        BirthdayBot.Domain.Entities.User user,
+        long chatId,
+        int? messageId,
+        string fullName,
+        string occasion,
+        bool replaceExistingMessage,
+        CancellationToken ct)
+    {
+        var previewBirthday = new Birthday
+        {
+            UserId = user.Id,
+            Name = fullName,
+            Date = DateOnly.FromDateTime(DateTime.UtcNow),
+            Relation = "test"
+        };
+
+        var draft = BuildGreetingPreviewDraft(user.Lang, previewBirthday.FullName, occasion);
+        var enhanceSw = Stopwatch.StartNew();
+        var enhanced = await _enhancer.EnhanceAsync(user, previewBirthday, draft, age: 30, ct);
+        enhanceSw.Stop();
+
+        var aiEvent = await _aiEvents.CreateAsync(new AiEvent
+        {
+            UserId = user.Id,
+            TelegramUserId = user.TelegramUserId,
+            EventType = "enhance_test",
+            InputText = draft,
+            OutputText = enhanced.Text,
+            EntityName = fullName,
+            Occasion = occasion,
+            IsFallback = enhanced.IsFallback,
+            FallbackReason = enhanced.FallbackReason,
+            PromptVersion = enhanced.PromptVersion,
+            ModelSource = enhanced.ModelSource,
+            LatencyMs = enhanceSw.Elapsed.TotalMilliseconds
+        }, ct);
+
+        var finalText = BuildRenderedGreeting(user.Lang, enhanced.Text, enhanced.IsFallback, _i18n.GetText(user.Lang, "ai_test_greeting_title"));
+        var keyboard = Keyboards.TestGreetingKb(user.Lang, $"ai:test:regen:{aiEvent.Id}");
+        if (replaceExistingMessage && messageId.HasValue)
+        {
+            await SafeEditMessageAsync(chatId, messageId.Value, finalText, ParseMode.Html, keyboard, ct);
+            return;
+        }
+
+        await _bot.SendTextMessageAsync(
+            chatId,
+            finalText,
+            parseMode: ParseMode.Html,
+            replyMarkup: keyboard,
+            cancellationToken: ct);
+    }
+
+    private async Task HandleAiFeedbackCommentAsync(
+        BirthdayBot.Domain.Entities.User user,
+        long chatId,
+        AiFeedbackSession feedbackSession,
+        string commentText,
+        CancellationToken ct)
+    {
+        _aiFeedbackSessions.Remove(chatId);
+        if (string.IsNullOrWhiteSpace(commentText))
+        {
+            await _bot.SendTextMessageAsync(chatId, _i18n.GetText(user.Lang, "ai_comment_prompt"), cancellationToken: ct);
+            return;
+        }
+
+        await RegenerateFromAiEventAsync(user, chatId, messageId: null, feedbackSession.SourceEventId, commentText.Trim(), ct);
+    }
+
+    private async Task RegenerateFromAiEventAsync(
+        BirthdayBot.Domain.Entities.User user,
+        long chatId,
+        int? messageId,
+        ObjectId sourceEventId,
+        string? userComment,
+        CancellationToken ct)
+    {
+        var source = await _aiEvents.GetByIdAsync(sourceEventId, ct);
+        if (source is null)
+        {
+            await _bot.SendTextMessageAsync(chatId, _i18n.GetText(user.Lang, "error_try_again"), cancellationToken: ct);
+            return;
+        }
+
+        var birthday = await ResolveBirthdayForAiEventAsync(user, source, ct);
+        var occasion = source.Occasion ?? "особый день";
+        var baseDraft = source.InputText;
+        if (string.IsNullOrWhiteSpace(baseDraft))
+        {
+            baseDraft = BuildGreetingPreviewDraft(user.Lang, birthday.FullName, occasion);
+        }
+
+        var draft = string.IsNullOrWhiteSpace(userComment)
+            ? baseDraft
+            : $"{baseDraft}\n\nAdditional user instruction: {userComment}";
+
+        var regenSw = Stopwatch.StartNew();
+        var enhanced = await _enhancer.EnhanceAsync(user, birthday, draft, age: 30, ct);
+        regenSw.Stop();
+
+        var nextEvent = await _aiEvents.CreateAsync(new AiEvent
+        {
+            UserId = user.Id,
+            TelegramUserId = user.TelegramUserId,
+            BirthdayId = birthday.Id == ObjectId.Empty ? null : birthday.Id,
+            ParentEventId = source.Id,
+            EventType = string.IsNullOrWhiteSpace(userComment) ? "enhance_regen" : "enhance_comment_regen",
+            InputText = draft,
+            OutputText = enhanced.Text,
+            EntityName = source.EntityName ?? birthday.FullName,
+            Occasion = source.Occasion,
+            UserComment = userComment,
+            IsFallback = enhanced.IsFallback,
+            FallbackReason = enhanced.FallbackReason,
+            PromptVersion = enhanced.PromptVersion,
+            ModelSource = enhanced.ModelSource,
+            LatencyMs = regenSw.Elapsed.TotalMilliseconds
+        }, ct);
+
+        var title = source.EventType.StartsWith("enhance_test", StringComparison.Ordinal)
+            || source.EventType.StartsWith("enhance_regen", StringComparison.Ordinal)
+            || source.EventType.StartsWith("enhance_comment_regen", StringComparison.Ordinal)
+            ? _i18n.GetText(user.Lang, "ai_test_greeting_title")
+            : _i18n.GetText(user.Lang, "ai_improved_title");
+
+        var text = BuildRenderedGreeting(user.Lang, enhanced.Text, enhanced.IsFallback, title);
+        var keyboard = source.EventType.StartsWith("enhance_test", StringComparison.Ordinal)
+            ? Keyboards.TestGreetingKb(user.Lang, $"ai:test:regen:{nextEvent.Id}")
+            : Keyboards.ReminderGreetingActionsKb(user.Lang, nextEvent.Id.ToString());
+
+        if (messageId.HasValue)
+        {
+            await SafeEditMessageAsync(chatId, messageId.Value, text, ParseMode.Html, keyboard, ct);
+            return;
+        }
+
+        await _bot.SendTextMessageAsync(chatId, text, parseMode: ParseMode.Html, replyMarkup: keyboard, cancellationToken: ct);
+    }
+
+    private async Task<Birthday> ResolveBirthdayForAiEventAsync(
+        BirthdayBot.Domain.Entities.User user,
+        AiEvent source,
+        CancellationToken ct)
+    {
+        if (source.BirthdayId.HasValue)
+        {
+            var existing = await _birthdays.GetByIdAsync(source.BirthdayId.Value, user.Id, ct);
+            if (existing is not null)
+            {
+                return existing;
+            }
+        }
+
+        return new Birthday
+        {
+            UserId = user.Id,
+            Name = source.EntityName ?? "Friend",
+            Date = DateOnly.FromDateTime(DateTime.UtcNow),
+            Relation = "test"
+        };
+    }
+
+    private string BuildRenderedGreeting(Language lang, string text, bool isFallback, string title)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"✨ <b>{title}</b>");
+        sb.AppendLine();
+        sb.AppendLine(Formatting.Html(text));
+        if (isFallback)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"<i>{Formatting.Html(_i18n.GetText(lang, "ai_fallback_notice"))}</i>");
+        }
+
+        return sb.ToString();
+    }
+
     private static string BuildGreetingPreviewDraft(Language lang, string fullName, string occasion)
     {
-        return lang switch
+        var set = lang switch
         {
-            Language.Ru => $"{fullName}, поздравляю тебя с {occasion}! Желаю отличного настроения, крепкого здоровья и больших успехов.",
-            Language.Pl => $"{fullName}, wszystkiego najlepszego z okazji {occasion}! Życzę dużo radości, zdrowia i sukcesów.",
-            _ => $"{fullName}, congratulations on {occasion}! Wishing you joy, good health, and great success."
+            Language.Ru => new[]
+            {
+                $"{fullName}, поздравляю тебя с {occasion}! Желаю отличного настроения, крепкого здоровья и больших успехов.",
+                $"{fullName}, от всей души поздравляю с {occasion}! Пусть день будет теплым, а год — удачным.",
+                $"{fullName}, с {occasion}! Желаю радости, энергии и ярких побед в каждом деле."
+            },
+            Language.Pl => new[]
+            {
+                $"{fullName}, wszystkiego najlepszego z okazji {occasion}! Życzę dużo radości, zdrowia i sukcesów.",
+                $"{fullName}, serdeczne życzenia z okazji {occasion}! Niech ten dzień będzie pełen uśmiechu.",
+                $"{fullName}, z okazji {occasion} życzę Ci energii, szczęścia i wielu pięknych chwil."
+            },
+            _ => new[]
+            {
+                $"{fullName}, congratulations on {occasion}! Wishing you joy, good health, and great success.",
+                $"{fullName}, happy {occasion}! Hope your day is bright and your year is full of wins.",
+                $"{fullName}, warm wishes for {occasion}! May this season bring happiness and inspiration."
+            }
         };
+
+        return set[Random.Shared.Next(set.Length)];
     }
 
     private async Task ApplySettingsUpdateAsync(

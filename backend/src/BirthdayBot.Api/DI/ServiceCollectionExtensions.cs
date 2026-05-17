@@ -47,6 +47,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUpdateHandler, UpdateHandler>();
         services.AddMemoryCache();
         services.AddSingleton<IConversationSessionStore, InMemoryConversationSessionStore>();
+        services.AddSingleton<IAiFeedbackSessionStore, InMemoryAiFeedbackSessionStore>();
         services.AddScoped<IWizardFlow, AddBirthdayWizardFlow>();
         // Хранилище сессий мастера
         services.AddSingleton<IAddBirthdayWizardSessionStore, InMemoryAddBirthdayWizardSessionStore>();
