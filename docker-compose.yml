@@ -42,9 +42,46 @@ services:
       - caddy_config:/config
     networks: [net]
 
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    restart: unless-stopped
+    depends_on: [app]
+    volumes:
+      - ./ops/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    networks: [net]
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    restart: unless-stopped
+    depends_on: [prometheus]
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./ops/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+    networks: [net]
+
+  ollama:
+    profiles: ["ai"]
+    image: ollama/ollama:0.3.12
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    networks: [net]
+
 volumes:
   caddy_data: {}
   caddy_config: {}
+  prometheus_data: {}
+  grafana_data: {}
+  ollama_data: {}
 
 networks:
   net: {}

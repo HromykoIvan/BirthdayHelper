@@ -220,6 +220,10 @@ jobs:
           DC_B64=$(base64 -w0 docker-compose.yml)
           CF_B64=$(base64 -w0 ops/caddy/Caddyfile)
           ES_B64=$(base64 -w0 ops/env-from-secrets.sh)
+          PM_B64=$(base64 -w0 ops/monitoring/prometheus/prometheus.yml)
+          GDS_B64=$(base64 -w0 ops/monitoring/grafana/provisioning/datasources/prometheus.yml)
+          GDP_B64=$(base64 -w0 ops/monitoring/grafana/provisioning/dashboards/dashboards.yml)
+          GDB_B64=$(base64 -w0 ops/monitoring/grafana/dashboards/birthdaybot-overview.json)
           
           cat > /tmp/rollout_commands.txt <<EOF
           set -e
@@ -333,9 +337,17 @@ jobs:
           # Sync config files from repo (base64-encoded in GH Actions runner)
           echo "Syncing config files from repo..."
           mkdir -p ops/caddy
+          mkdir -p ops/monitoring/prometheus
+          mkdir -p ops/monitoring/grafana/provisioning/datasources
+          mkdir -p ops/monitoring/grafana/provisioning/dashboards
+          mkdir -p ops/monitoring/grafana/dashboards
           echo "${DC_B64}" | base64 -d > docker-compose.yml
           echo "${CF_B64}" | base64 -d > ops/caddy/Caddyfile
           echo "${ES_B64}" | base64 -d > ops/env-from-secrets.sh
+          echo "${PM_B64}" | base64 -d > ops/monitoring/prometheus/prometheus.yml
+          echo "${GDS_B64}" | base64 -d > ops/monitoring/grafana/provisioning/datasources/prometheus.yml
+          echo "${GDP_B64}" | base64 -d > ops/monitoring/grafana/provisioning/dashboards/dashboards.yml
+          echo "${GDB_B64}" | base64 -d > ops/monitoring/grafana/dashboards/birthdaybot-overview.json
           chmod +x ops/env-from-secrets.sh
           rm -f docker-compose.yaml
           echo "Config files synced"

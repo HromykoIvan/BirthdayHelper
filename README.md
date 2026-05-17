@@ -114,6 +114,50 @@ On push to `master` (for configured paths), the pipeline:
 - `/health/startup`
 - `/healthz`
 
+### Metrics UI (cheap setup)
+
+- Grafana is available at `/grafana` (proxied by Caddy).
+- Prometheus scrapes metrics from the app on the internal Docker network.
+- Public `/metrics` is blocked by Caddy; scrape uses `app:8080/metrics` (or `api:8080/metrics` on EC2 compose).
+
+For local runtime:
+
+```bash
+docker compose up -d
+open http://localhost/grafana
+```
+
+Default Grafana credentials can be set via:
+
+- `GRAFANA_ADMIN_USER`
+- `GRAFANA_ADMIN_PASSWORD`
+
+### Local AI mode (same instance)
+
+The bot supports a local-first AI path:
+
+- free-text intent parsing (`LocalIntentRouter`)
+- personalized greeting draft using birthday metadata from MongoDB
+- optional Ollama-based rewrite on the same host
+
+Config keys:
+
+- `LocalAi:Enable`
+- `LocalAi:UseOllama`
+- `LocalAi:BaseUrl`
+- `LocalAi:Model`
+- `LocalAi:TimeoutSeconds`
+
+If `UseOllama=false`, the bot still uses local deterministic enhancement (no external API calls).
+
+To run Ollama in Docker compose:
+
+```bash
+docker compose --profile ai up -d ollama
+```
+
+The reminder flow adds an inline button to improve generated greeting text using the local AI enhancer.
+
 ### Useful checks on EC2 (via SSM session)
 
 ```bash
@@ -168,6 +212,12 @@ For stricter high availability requirements (very low downtime), add a load bala
 
 - **TLS not issuing**  
   Confirm DNS resolves to the current public IP and ports `80/443` are open.
+
+- **No Grafana data**  
+  Check `docker compose logs prometheus` and ensure app metrics are available on internal target (`app:8080/metrics` or `api:8080/metrics`).
+
+- **Local AI fallback too often**  
+  Verify local model runtime availability and timeout settings in `LocalAi` options.
 
 ## License
 

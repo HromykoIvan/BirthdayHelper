@@ -23,6 +23,8 @@ public static class ServiceCollectionExtensions
         services.Configure<MongoOptions>(cfg.GetSection("Mongo"));
         services.Configure<ReminderOptions>(cfg.GetSection("Reminder"));
         services.Configure<MetricsOptions>(cfg.GetSection("Metrics"));
+        services.Configure<LocalAiOptions>(cfg.GetSection("LocalAi"));
+        services.Configure<UserRateLimitOptions>(cfg.GetSection("UserRateLimit"));
 
         services.AddSingleton<MongoContext>();
 
@@ -31,6 +33,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDeliveryLogRepository, DeliveryLogRepository>();
 
         services.AddSingleton<IGreetingGenerator, GreetingGenerator>();
+        services.AddSingleton<AiMetrics>();
+        services.AddSingleton<IIntentRouter, LocalIntentRouter>();
+        services.AddSingleton<IUserUpdateRateLimiter, UserUpdateRateLimiter>();
+        services.AddSingleton<IAiGreetingEnhancer, LocalAiGreetingEnhancer>();
         services.AddSingleton<ILocalizationService, LocalizationService>();
 
         services.AddSingleton<InMemoryConversationState>();
@@ -86,6 +92,7 @@ public static class ServiceCollectionExtensions
                 {
                     builder.AddAspNetCoreInstrumentation();
                     builder.AddRuntimeInstrumentation();
+                    builder.AddMeter(AiMetrics.MeterName);
                     builder.AddPrometheusExporter();
                 });
         }

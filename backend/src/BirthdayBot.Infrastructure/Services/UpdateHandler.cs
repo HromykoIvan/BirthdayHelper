@@ -1,8 +1,10 @@
 using System.Globalization;
+using System.Net;
 using System.Text;
 using BirthdayBot.Application.Interfaces;
 using BirthdayBot.Application.UI;
 using BirthdayBot.Application.Services;
+using BirthdayBot.Application.Models;
 using BirthdayBot.Application.Utils;
 using BirthdayBot.Domain.Entities;
 using BirthdayBot.Domain.Enums;
@@ -37,6 +39,11 @@ public sealed class UpdateHandler : IUpdateHandler
     private readonly IUpcomingService _upcoming;
     private readonly AddBirthdayWizardFlow _wizard;
     private readonly IDateTimeZoneProvider _tzdb;
+    private readonly IIntentRouter _intentRouter;
+    private readonly IAiGreetingEnhancer _enhancer;
+    private readonly IGreetingGenerator _greetings;
+    private readonly IUserUpdateRateLimiter _userRateLimiter;
+    private readonly AiMetrics _metrics;
 
     public UpdateHandler(
         ILogger<UpdateHandler> logger,
@@ -46,6 +53,11 @@ public sealed class UpdateHandler : IUpdateHandler
         ILocalizationService i18n,
         IUpcomingService upcoming,
         AddBirthdayWizardFlow wizard,
+        IIntentRouter intentRouter,
+        IAiGreetingEnhancer enhancer,
+        IGreetingGenerator greetings,
+        IUserUpdateRateLimiter userRateLimiter,
+        AiMetrics metrics,
         IDateTimeZoneProvider? tzdb = null)
     {
         _logger = logger;
@@ -55,6 +67,11 @@ public sealed class UpdateHandler : IUpdateHandler
         _i18n = i18n;
         _upcoming = upcoming;
         _wizard = wizard;
+        _intentRouter = intentRouter;
+        _enhancer = enhancer;
+        _greetings = greetings;
+        _userRateLimiter = userRateLimiter;
+        _metrics = metrics;
         _tzdb = tzdb ?? DateTimeZoneProviders.Tzdb;
         
         // Initialize Keyboards with localization service
@@ -150,6 +167,11 @@ public sealed class UpdateHandler : IUpdateHandler
     private async Task HandleTextMessageAsync(Message msg, CancellationToken ct)
     {
         if (msg is null) return;
+        if (!_userRateLimiter.IsAllowed(msg.From?.Id ?? 0))
+        {
+            await _bot.SendTextMessageAsync(msg.Chat.Id, _i18n.GetText(Language.En, "rate_limit_exceeded"), cancellationToken: ct);
+            return;
+        }
 
         var chatId = msg.Chat?.Id ?? msg.From?.Id ?? 0;
         if (chatId == 0) return;
@@ -227,8 +249,8 @@ public sealed class UpdateHandler : IUpdateHandler
             return;
         }
 
-        // Loose settings by free text
-        if (await TryApplyLooseSettingsAsync(user, chatId, text, ct))
+        // AI/local intent router for free text commands.
+        if (await TryHandleIntentAsync(user, msg.From!, chatId, text, ct))
             return;
 
         // Fallback — show main menu
@@ -415,6 +437,12 @@ public sealed class UpdateHandler : IUpdateHandler
 
     private async Task HandleCallbackQueryAsync(CallbackQuery cq, CancellationToken ct)
     {
+        if (!_userRateLimiter.IsAllowed(cq.From.Id))
+        {
+            await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(Language.En, "rate_limit_exceeded"), ct);
+            return;
+        }
+
         var user = await EnsureUser(cq.From, ct);
 
         try
@@ -488,6 +516,69 @@ public sealed class UpdateHandler : IUpdateHandler
                             null, Keyboards.BackToMenuKb(user.Lang), ct);
                     }
                 }
+            }
+            else if (cq.Data is { } aiData && aiData.StartsWith("ai:improve:", StringComparison.Ordinal))
+            {
+                var idText = aiData["ai:improve:".Length..];
+                if (ObjectId.TryParse(idText, out var bid))
+                {
+                    var entry = await _birthdays.GetByIdAsync(bid, user.Id, ct);
+                    if (entry is null)
+                    {
+                        await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "entry_not_found"), ct);
+                        return;
+                    }
+
+                    var zone = _tzdb[user.Timezone];
+                    var today = SystemClock.Instance.GetCurrentInstant().InZone(zone).Date;
+                    var (_, age) = DateHelpers.NextBirthday(today, entry.Date);
+                    var draft = _greetings.GeneratePersonalized(user, entry, age);
+                    var improved = await _enhancer.EnhanceAsync(user, entry, draft, age, ct);
+
+                    var text = $"✨ <b>{_i18n.GetText(user.Lang, "ai_improved_title")}</b>\n\n{Formatting.Html(improved)}";
+                    await SafeEditMessageAsync(
+                        cq.Message!.Chat.Id,
+                        cq.Message.MessageId,
+                        text,
+                        ParseMode.Html,
+                        Keyboards.BackToMenuKb(user.Lang),
+                        ct);
+                }
+            }
+            else if (cq.Data is { } removeByNameData && removeByNameData.StartsWith("delete:name:confirm:", StringComparison.Ordinal))
+            {
+                var encodedName = removeByNameData["delete:name:confirm:".Length..];
+                var name = WebUtility.UrlDecode(encodedName);
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
+                    return;
+                }
+                var entry = await _birthdays.FindByNameAsync(user.Id, name, ct);
+                if (entry is null)
+                {
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "entry_not_found"), ct);
+                    return;
+                }
+
+                await _birthdays.DeleteAsync(entry.Id, user.Id, ct);
+                await SafeEditMessageAsync(
+                    cq.Message!.Chat.Id,
+                    cq.Message.MessageId,
+                    _i18n.GetText(user.Lang, "removed"),
+                    ParseMode.Html,
+                    Keyboards.BackToMenuKb(user.Lang),
+                    ct);
+            }
+            else if (cq.Data is { } removeByNameCancel && removeByNameCancel.StartsWith("delete:name:cancel", StringComparison.Ordinal))
+            {
+                await SafeEditMessageAsync(
+                    cq.Message!.Chat.Id,
+                    cq.Message.MessageId,
+                    _i18n.GetText(user.Lang, "delete_cancelled"),
+                    ParseMode.Html,
+                    Keyboards.BackToMenuKb(user.Lang),
+                    ct);
             }
         }
         catch (Exception ex)
@@ -1047,41 +1138,120 @@ public sealed class UpdateHandler : IUpdateHandler
     }
 
     // ════════════════════════════════════════════
-    //  Loose settings
+    //  Free-text intent routing
     // ════════════════════════════════════════════
 
-    private async Task<bool> TryApplyLooseSettingsAsync(BirthdayBot.Domain.Entities.User user, long chatId, string text, CancellationToken ct)
+    private async Task<bool> TryHandleIntentAsync(
+        BirthdayBot.Domain.Entities.User user,
+        Telegram.Bot.Types.User tgUser,
+        long chatId,
+        string text,
+        CancellationToken ct)
     {
-        var updated = false;
-
-        if (DateHelpers.TryParseTimeHHmm(text, out var h, out var m))
+        var intent = await _intentRouter.ParseAsync(user, text, ct);
+        switch (intent.Intent)
         {
-            user.NotifyAtLocalTime = $"{h:00}:{m:00}";
-            updated = true;
+            case UserIntentType.None:
+                return false;
+
+            case UserIntentType.OpenHelp:
+                await _bot.SendTextMessageAsync(chatId, _i18n.GetText(user.Lang, "help"),
+                    parseMode: ParseMode.Html,
+                    replyMarkup: Keyboards.BackToMenuKb(user.Lang),
+                    cancellationToken: ct);
+                return true;
+
+            case UserIntentType.OpenSettings:
+                await _bot.SendTextMessageAsync(chatId, BuildSettingsMessage(user),
+                    parseMode: ParseMode.Html,
+                    replyMarkup: Keyboards.SettingsKb(user.Lang, user),
+                    cancellationToken: ct);
+                return true;
+
+            case UserIntentType.OpenAddBirthday:
+                await _wizard.TryHandleAsync(new Update
+                {
+                    Message = new Message
+                    {
+                        Chat = new Chat { Id = chatId },
+                        From = tgUser,
+                        Text = "/add_birthday"
+                    }
+                }, ct);
+                return true;
+
+            case UserIntentType.OpenList:
+                await SendCurrentMonthView(user, chatId, ct);
+                return true;
+
+            case UserIntentType.RemoveByName when !string.IsNullOrWhiteSpace(intent.EntityName):
+                var encodedName = WebUtility.UrlEncode(intent.EntityName);
+                await _bot.SendTextMessageAsync(
+                    chatId,
+                    string.Format(_i18n.GetText(user.Lang, "delete_confirm_by_name"), Formatting.Html(intent.EntityName)),
+                    parseMode: ParseMode.Html,
+                    replyMarkup: new InlineKeyboardMarkup(new[]
+                    {
+                        new[]
+                        {
+                            InlineKeyboardButton.WithCallbackData(
+                                _i18n.GetText(user.Lang, "delete_confirm_button"),
+                                $"delete:name:confirm:{encodedName}")
+                        },
+                        new[]
+                        {
+                            InlineKeyboardButton.WithCallbackData(
+                                _i18n.GetText(user.Lang, "delete_cancel_button"),
+                                "delete:name:cancel")
+                        }
+                    }),
+                    cancellationToken: ct);
+                return true;
+
+            case UserIntentType.UpdateSettings when intent.Settings is not null:
+                await ApplySettingsUpdateAsync(user, chatId, intent.Settings, ct);
+                return true;
+
+            default:
+                _metrics.TrackIntentFallback("unknown_intent");
+                return false;
+        }
+    }
+
+    private async Task ApplySettingsUpdateAsync(
+        BirthdayBot.Domain.Entities.User user,
+        long chatId,
+        SettingsUpdate update,
+        CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(update.TimeHHmm))
+        {
+            user.NotifyAtLocalTime = update.TimeHHmm;
         }
 
-        if (text.Contains("ru", StringComparison.OrdinalIgnoreCase)) { user.Lang = Language.Ru; updated = true; }
-        if (text.Contains("pl", StringComparison.OrdinalIgnoreCase)) { user.Lang = Language.Pl; updated = true; }
-        if (text.Contains("en", StringComparison.OrdinalIgnoreCase)) { user.Lang = Language.En; updated = true; }
-
-        if (text.Contains("formal", StringComparison.OrdinalIgnoreCase)) { user.Tone = Tone.Formal; updated = true; }
-        if (text.Contains("friendly", StringComparison.OrdinalIgnoreCase)) { user.Tone = Tone.Friendly; updated = true; }
-
-        if (text.Contains("auto on", StringComparison.OrdinalIgnoreCase)) { user.AutoGenerateGreetings = true; updated = true; }
-        if (text.Contains("auto off", StringComparison.OrdinalIgnoreCase)) { user.AutoGenerateGreetings = false; updated = true; }
-
-        if (_tzdb.Ids.Contains(text))
+        if (update.Lang.HasValue)
         {
-            user.Timezone = text;
-            updated = true;
+            user.Lang = update.Lang.Value;
         }
 
-        if (!updated) return false;
+        if (update.Tone.HasValue)
+        {
+            user.Tone = update.Tone.Value;
+        }
+
+        if (update.AutoGenerate.HasValue)
+        {
+            user.AutoGenerateGreetings = update.AutoGenerate.Value;
+        }
+
+        if (!string.IsNullOrWhiteSpace(update.Timezone) && _tzdb.Ids.Contains(update.Timezone))
+        {
+            user.Timezone = update.Timezone;
+        }
 
         await _users.UpdateAsync(user, ct);
         await _bot.SendTextMessageAsync(chatId, _i18n.GetText(user.Lang, "saved"),
             replyMarkup: Keyboards.BackToMenuKb(user.Lang), cancellationToken: ct);
-        return true;
     }
 
     // ════════════════════════════════════════════
