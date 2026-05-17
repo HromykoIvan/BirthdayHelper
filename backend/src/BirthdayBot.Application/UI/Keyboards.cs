@@ -84,7 +84,31 @@ public static class Keyboards
             },
             new[]
             {
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_add_comment"), regenerateCallbackData.Replace("ai:test:regen:", "ai:test:comment:"))
+            },
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_use_as_example"), regenerateCallbackData.Replace("ai:test:regen:", "ai:test:accept:"))
+            },
+            new[]
+            {
                 InlineKeyboardButton.WithCallbackData(GetText(lang, "back_to_menu"), "menu:home")
+            }
+        });
+    }
+
+    public static InlineKeyboardMarkup ReminderGreetingActionsKb(Language lang, string eventId)
+    {
+        return new(new[]
+        {
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_regenerate"), $"ai:improve:event:{eventId}")
+            },
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_add_comment"), $"ai:comment:event:{eventId}"),
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_use_as_example"), $"ai:accept:event:{eventId}")
             }
         });
     }

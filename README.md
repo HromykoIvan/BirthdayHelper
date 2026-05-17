@@ -166,6 +166,12 @@ You can also run ad-hoc greeting tests in chat with free text, for example:
 
 In the bot UI, use the `🧪 Test greeting` button and then `🔄 Regenerate` to request another variant quickly.
 
+For birthday reminders, the bot also provides:
+
+- `🔄 Regenerate` to produce another variant
+- `💬 Add comment` to give direct style instructions
+- `✅ Use as example` to save the final text as preferred style for future generations
+
 ### AI memory and eval loop
 
 AI runtime events are persisted to MongoDB collection `ai_events`:
