@@ -1,0 +1,74 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "graphTooltip": 0,
+  "panels": [
+    {
+      "id": 1,
+      "title": "HTTP p95 latency (s)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le))",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "title": "AI intent fallback (%)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "100 * sum(rate(ai_intent_fallback_total[5m])) / clamp_min(sum(rate(ai_intent_requests_total[5m])), 1)",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }
+    },
+    {
+      "id": 3,
+      "title": "AI parse errors (per min)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(ai_intent_parse_errors_total[1m]))",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }
+    },
+    {
+      "id": 4,
+      "title": "Request throughput (req/s)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_request_duration_seconds_count[1m]))",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }
+    }
+  ],
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["birthdaybot", "ai", "ops"],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "title": "BirthdayBot Overview",
+  "uid": "birthdaybot-overview",
+  "version": 1
+}

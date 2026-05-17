@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Hosting;
 using BirthdayBot.Infrastructure.Options;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace BirthdayBot.Infrastructure.Services;
 
@@ -23,6 +24,7 @@ public class ReminderHostedService : BackgroundService, IReminderService
     private readonly IGreetingGenerator _greetings;
     private readonly ILocalizationService _i18n;
     private readonly ITelegramBotClient _bot;
+    private readonly IAiGreetingEnhancer _enhancer;
     private readonly string _cron;
     private readonly IDateTimeZoneProvider _tzdb = DateTimeZoneProviders.Tzdb;
 
@@ -32,6 +34,7 @@ public class ReminderHostedService : BackgroundService, IReminderService
         IBirthdayRepository birthdays,
         IDeliveryLogRepository logs,
         IGreetingGenerator greetings,
+        IAiGreetingEnhancer enhancer,
         ILocalizationService i18n,
         ITelegramBotClient bot,
         IOptions<ReminderOptions> options)
@@ -41,6 +44,7 @@ public class ReminderHostedService : BackgroundService, IReminderService
         _birthdays = birthdays;
         _logs = logs;
         _greetings = greetings;
+        _enhancer = enhancer;
         _i18n = i18n;
         _bot = bot;
         _cron = options.Value.Cron ?? "* * * * *"; // every minute
@@ -106,13 +110,26 @@ public class ReminderHostedService : BackgroundService, IReminderService
                                        : (user.Lang == Language.Pl ? "JUTRO" : user.Lang == Language.Ru ? "ЗАВТРА" : "TOMORROW");
 
                     var msg = $"{when}: {b.Name} — {next:yyyy-MM-dd} ({age})";
+                    InlineKeyboardMarkup? replyMarkup = null;
                     if (user.AutoGenerateGreetings)
                     {
-                        var text = _greetings.Generate(user.Lang, user.Tone, b.Name, age);
+                        var draft = _greetings.GeneratePersonalized(user, b, age);
+                        var text = await _enhancer.EnhanceAsync(user, b, draft, age, ct);
                         msg += $"\n\n{text}";
+                        replyMarkup = new InlineKeyboardMarkup(new[]
+                        {
+                            new[]
+                            {
+                                InlineKeyboardButton.WithCallbackData(_i18n.GetText(user.Lang, "ai_improve_greeting"), $"ai:improve:{b.Id}")
+                            }
+                        });
                     }
 
-                    var sent = await _bot.SendTextMessageAsync(chatId: user.TelegramUserId, text: msg, cancellationToken: ct);
+                    var sent = await _bot.SendTextMessageAsync(
+                        chatId: user.TelegramUserId,
+                        text: msg,
+                        replyMarkup: replyMarkup,
+                        cancellationToken: ct);
                     await _logs.CreateAsync(new DeliveryLog
                     {
                         UserId = user.Id,

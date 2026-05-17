@@ -225,9 +225,17 @@ public class LocalizationService : ILocalizationService
         {(Language.Pl, "delete_confirm_button"), "✅ Usuń"},
         {(Language.En, "delete_confirm_button"), "✅ Delete"},
 
+        {(Language.Ru, "delete_confirm_by_name"), "Удалить запись для <b>{0}</b>?"},
+        {(Language.Pl, "delete_confirm_by_name"), "Usunąć wpis dla <b>{0}</b>?"},
+        {(Language.En, "delete_confirm_by_name"), "Delete entry for <b>{0}</b>?"},
+
         {(Language.Ru, "delete_cancel_button"), "❌ Отмена"},
         {(Language.Pl, "delete_cancel_button"), "❌ Anuluj"},
         {(Language.En, "delete_cancel_button"), "❌ Cancel"},
+
+        {(Language.Ru, "delete_cancelled"), "Удаление отменено."},
+        {(Language.Pl, "delete_cancelled"), "Usuwanie anulowane."},
+        {(Language.En, "delete_cancelled"), "Deletion cancelled."},
 
         {(Language.Ru, "entry_not_found"), "Запись не найдена."},
         {(Language.Pl, "entry_not_found"), "Nie znaleziono wpisu."},
@@ -488,6 +496,18 @@ public class LocalizationService : ILocalizationService
         {(Language.Ru, "error_try_again"), "Произошла ошибка. Попробуйте ещё раз."},
         {(Language.Pl, "error_try_again"), "Wystąpił błąd. Spróbuj ponownie."},
         {(Language.En, "error_try_again"), "An error occurred. Please try again."},
+
+        {(Language.Ru, "rate_limit_exceeded"), "Слишком много запросов. Подождите немного и попробуйте снова."},
+        {(Language.Pl, "rate_limit_exceeded"), "Zbyt wiele żądań. Poczekaj chwilę i spróbuj ponownie."},
+        {(Language.En, "rate_limit_exceeded"), "Too many requests. Please wait a moment and try again."},
+
+        {(Language.Ru, "ai_improve_greeting"), "✨ Улучшить поздравление"},
+        {(Language.Pl, "ai_improve_greeting"), "✨ Ulepsz życzenia"},
+        {(Language.En, "ai_improve_greeting"), "✨ Improve greeting"},
+
+        {(Language.Ru, "ai_improved_title"), "Улучшенное поздравление"},
+        {(Language.Pl, "ai_improved_title"), "Ulepszone życzenia"},
+        {(Language.En, "ai_improved_title"), "Improved greeting"},
     };
 
     public string GetText(Language lang, string key)

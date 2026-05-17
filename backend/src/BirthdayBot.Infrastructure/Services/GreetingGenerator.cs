@@ -1,5 +1,6 @@
 // path: backend/src/BirthdayBot.Infrastructure/Services/GreetingGenerator.cs
 using BirthdayBot.Application.Interfaces;
+using BirthdayBot.Domain.Entities;
 using BirthdayBot.Domain.Enums;
 
 namespace BirthdayBot.Infrastructure.Services;
@@ -75,5 +76,34 @@ public class GreetingGenerator : IGreetingGenerator
         var random = Random.Shared;
         var template = set[random.Next(set.Length)];
         return string.Format(template, name, age);
+    }
+
+    public string GeneratePersonalized(User user, Birthday birthday, int age)
+    {
+        var lang = birthday.GreetingLanguage ?? user.Lang;
+        var baseText = Generate(lang, user.Tone, birthday.FullName, age);
+        var parts = new List<string> { baseText };
+
+        if (!string.IsNullOrWhiteSpace(birthday.Relation))
+        {
+            parts.Add(lang switch
+            {
+                Language.Ru => $"Ты для меня очень важный человек ({birthday.Relation.ToLowerInvariant()}).",
+                Language.Pl => $"Jesteś dla mnie bardzo ważną osobą ({birthday.Relation.ToLowerInvariant()}).",
+                _ => $"You are someone important to me ({birthday.Relation.ToLowerInvariant()})."
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(birthday.Interests))
+        {
+            parts.Add(lang switch
+            {
+                Language.Ru => $"Пусть в этом году будет больше того, что ты любишь: {birthday.Interests}.",
+                Language.Pl => $"Niech w tym roku będzie więcej tego, co lubisz: {birthday.Interests}.",
+                _ => $"Wishing you more of what you love this year: {birthday.Interests}."
+            });
+        }
+
+        return string.Join(" ", parts);
     }
 }
