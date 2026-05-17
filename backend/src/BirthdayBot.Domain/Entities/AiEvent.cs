@@ -18,6 +18,10 @@ public sealed class AiEvent
 
     public string? OutputText { get; set; }
 
+    public string? EntityName { get; set; }
+
+    public string? Occasion { get; set; }
+
     public string? ParsedIntent { get; set; }
 
     public string? ExpectedIntent { get; set; }

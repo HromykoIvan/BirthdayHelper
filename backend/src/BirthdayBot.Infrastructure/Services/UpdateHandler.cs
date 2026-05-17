@@ -316,6 +316,17 @@ public sealed class UpdateHandler : IUpdateHandler
                     _i18n.GetText(user.Lang, "help"),
                     ParseMode.Html, Keyboards.BackToMenuKb(user.Lang), ct);
                 break;
+
+            case "menu:test_greeting":
+                await GenerateGreetingPreviewAsync(
+                    user,
+                    chatId,
+                    cq.Message.MessageId,
+                    "Сергей Калугин",
+                    "23 февраля",
+                    replaceExistingMessage: true,
+                    ct: ct);
+                break;
         }
 
         await SafeAnswerCallbackQuery(cq.Id, ct: ct);
@@ -569,6 +580,31 @@ public sealed class UpdateHandler : IUpdateHandler
                         Keyboards.BackToMenuKb(user.Lang),
                         ct);
                 }
+            }
+            else if (cq.Data is { } testRegenerateData && testRegenerateData.StartsWith("ai:test:regen:", StringComparison.Ordinal))
+            {
+                var eventIdText = testRegenerateData["ai:test:regen:".Length..];
+                if (!ObjectId.TryParse(eventIdText, out var eventId))
+                {
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
+                    return;
+                }
+
+                var previous = await _aiEvents.GetByIdAsync(eventId, ct);
+                if (previous is null || string.IsNullOrWhiteSpace(previous.EntityName))
+                {
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
+                    return;
+                }
+
+                await GenerateGreetingPreviewAsync(
+                    user,
+                    cq.Message!.Chat.Id,
+                    cq.Message.MessageId,
+                    previous.EntityName,
+                    previous.Occasion ?? "особый день",
+                    replaceExistingMessage: true,
+                    ct: ct);
             }
             else if (cq.Data is { } removeByNameData && removeByNameData.StartsWith("delete:name:confirm:", StringComparison.Ordinal))
             {
@@ -1254,39 +1290,14 @@ public sealed class UpdateHandler : IUpdateHandler
 
             case UserIntentType.GenerateGreetingPreview when !string.IsNullOrWhiteSpace(intent.EntityName):
                 var occasion = string.IsNullOrWhiteSpace(intent.Occasion) ? "особый день" : intent.Occasion.Trim();
-                var previewBirthday = new Birthday
-                {
-                    UserId = user.Id,
-                    Name = intent.EntityName.Trim(),
-                    Date = DateOnly.FromDateTime(DateTime.UtcNow),
-                    Relation = "test"
-                };
-
-                var draft = BuildGreetingPreviewDraft(user.Lang, previewBirthday.FullName, occasion);
-                var enhanceSw = Stopwatch.StartNew();
-                var enhanced = await _enhancer.EnhanceAsync(user, previewBirthday, draft, age: 30, ct);
-                enhanceSw.Stop();
-
-                await _aiEvents.CreateAsync(new AiEvent
-                {
-                    UserId = user.Id,
-                    TelegramUserId = user.TelegramUserId,
-                    EventType = "enhance_test",
-                    InputText = draft,
-                    OutputText = enhanced.Text,
-                    IsFallback = enhanced.IsFallback,
-                    FallbackReason = enhanced.FallbackReason,
-                    PromptVersion = enhanced.PromptVersion,
-                    ModelSource = enhanced.ModelSource,
-                    LatencyMs = enhanceSw.Elapsed.TotalMilliseconds
-                }, ct);
-
-                var responseText = $"🧪 <b>{_i18n.GetText(user.Lang, "ai_test_greeting_title")}</b>\n\n{Formatting.Html(enhanced.Text)}";
-                await _bot.SendTextMessageAsync(chatId,
-                    responseText,
-                    parseMode: ParseMode.Html,
-                    replyMarkup: Keyboards.BackToMenuKb(user.Lang),
-                    cancellationToken: ct);
+                await GenerateGreetingPreviewAsync(
+                    user,
+                    chatId,
+                    messageId: null,
+                    intent.EntityName.Trim(),
+                    occasion,
+                    replaceExistingMessage: false,
+                    ct: ct);
                 return true;
 
             case UserIntentType.UpdateSettings when intent.Settings is not null:
@@ -1299,14 +1310,94 @@ public sealed class UpdateHandler : IUpdateHandler
         }
     }
 
+    private async Task GenerateGreetingPreviewAsync(
+        BirthdayBot.Domain.Entities.User user,
+        long chatId,
+        int? messageId,
+        string fullName,
+        string occasion,
+        bool replaceExistingMessage,
+        CancellationToken ct)
+    {
+        var previewBirthday = new Birthday
+        {
+            UserId = user.Id,
+            Name = fullName,
+            Date = DateOnly.FromDateTime(DateTime.UtcNow),
+            Relation = "test"
+        };
+
+        var draft = BuildGreetingPreviewDraft(user.Lang, previewBirthday.FullName, occasion);
+        var enhanceSw = Stopwatch.StartNew();
+        var enhanced = await _enhancer.EnhanceAsync(user, previewBirthday, draft, age: 30, ct);
+        enhanceSw.Stop();
+
+        var aiEvent = await _aiEvents.CreateAsync(new AiEvent
+        {
+            UserId = user.Id,
+            TelegramUserId = user.TelegramUserId,
+            EventType = "enhance_test",
+            InputText = draft,
+            OutputText = enhanced.Text,
+            EntityName = fullName,
+            Occasion = occasion,
+            IsFallback = enhanced.IsFallback,
+            FallbackReason = enhanced.FallbackReason,
+            PromptVersion = enhanced.PromptVersion,
+            ModelSource = enhanced.ModelSource,
+            LatencyMs = enhanceSw.Elapsed.TotalMilliseconds
+        }, ct);
+
+        var finalText = new StringBuilder();
+        finalText.AppendLine($"🧪 <b>{_i18n.GetText(user.Lang, "ai_test_greeting_title")}</b>");
+        finalText.AppendLine();
+        finalText.AppendLine(Formatting.Html(enhanced.Text));
+        if (enhanced.IsFallback)
+        {
+            finalText.AppendLine();
+            finalText.AppendLine($"<i>{Formatting.Html(_i18n.GetText(user.Lang, "ai_fallback_notice"))}</i>");
+        }
+
+        var keyboard = Keyboards.TestGreetingKb(user.Lang, $"ai:test:regen:{aiEvent.Id}");
+        if (replaceExistingMessage && messageId.HasValue)
+        {
+            await SafeEditMessageAsync(chatId, messageId.Value, finalText.ToString(), ParseMode.Html, keyboard, ct);
+            return;
+        }
+
+        await _bot.SendTextMessageAsync(
+            chatId,
+            finalText.ToString(),
+            parseMode: ParseMode.Html,
+            replyMarkup: keyboard,
+            cancellationToken: ct);
+    }
+
     private static string BuildGreetingPreviewDraft(Language lang, string fullName, string occasion)
     {
-        return lang switch
+        var set = lang switch
         {
-            Language.Ru => $"{fullName}, поздравляю тебя с {occasion}! Желаю отличного настроения, крепкого здоровья и больших успехов.",
-            Language.Pl => $"{fullName}, wszystkiego najlepszego z okazji {occasion}! Życzę dużo radości, zdrowia i sukcesów.",
-            _ => $"{fullName}, congratulations on {occasion}! Wishing you joy, good health, and great success."
+            Language.Ru => new[]
+            {
+                $"{fullName}, поздравляю тебя с {occasion}! Желаю отличного настроения, крепкого здоровья и больших успехов.",
+                $"{fullName}, от всей души поздравляю с {occasion}! Пусть день будет теплым, а год — удачным.",
+                $"{fullName}, с {occasion}! Желаю радости, энергии и ярких побед в каждом деле."
+            },
+            Language.Pl => new[]
+            {
+                $"{fullName}, wszystkiego najlepszego z okazji {occasion}! Życzę dużo radości, zdrowia i sukcesów.",
+                $"{fullName}, serdeczne życzenia z okazji {occasion}! Niech ten dzień będzie pełen uśmiechu.",
+                $"{fullName}, z okazji {occasion} życzę Ci energii, szczęścia i wielu pięknych chwil."
+            },
+            _ => new[]
+            {
+                $"{fullName}, congratulations on {occasion}! Wishing you joy, good health, and great success.",
+                $"{fullName}, happy {occasion}! Hope your day is bright and your year is full of wins.",
+                $"{fullName}, warm wishes for {occasion}! May this season bring happiness and inspiration."
+            }
         };
+
+        return set[Random.Shared.Next(set.Length)];
     }
 
     private async Task ApplySettingsUpdateAsync(
