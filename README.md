@@ -156,6 +156,8 @@ To run Ollama in Docker compose:
 docker compose --profile ai up -d ollama
 ```
 
+In EC2 deployment compose, Ollama is started by default during rollout so `UseOllama=true` can work without a separate manual step.
+
 The reminder flow adds an inline button to improve generated greeting text using the local AI enhancer.
 
 You can also run ad-hoc greeting tests in chat with free text, for example:
