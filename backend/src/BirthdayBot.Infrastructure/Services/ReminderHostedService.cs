@@ -12,6 +12,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Hosting;
 using BirthdayBot.Infrastructure.Options;
 using Telegram.Bot.Types.ReplyMarkups;
+using System.Diagnostics;
 
 namespace BirthdayBot.Infrastructure.Services;
 
@@ -25,6 +26,7 @@ public class ReminderHostedService : BackgroundService, IReminderService
     private readonly ILocalizationService _i18n;
     private readonly ITelegramBotClient _bot;
     private readonly IAiGreetingEnhancer _enhancer;
+    private readonly IAiEventRepository _aiEvents;
     private readonly string _cron;
     private readonly IDateTimeZoneProvider _tzdb = DateTimeZoneProviders.Tzdb;
 
@@ -35,6 +37,7 @@ public class ReminderHostedService : BackgroundService, IReminderService
         IDeliveryLogRepository logs,
         IGreetingGenerator greetings,
         IAiGreetingEnhancer enhancer,
+        IAiEventRepository aiEvents,
         ILocalizationService i18n,
         ITelegramBotClient bot,
         IOptions<ReminderOptions> options)
@@ -45,6 +48,7 @@ public class ReminderHostedService : BackgroundService, IReminderService
         _logs = logs;
         _greetings = greetings;
         _enhancer = enhancer;
+        _aiEvents = aiEvents;
         _i18n = i18n;
         _bot = bot;
         _cron = options.Value.Cron ?? "* * * * *"; // every minute
@@ -114,8 +118,23 @@ public class ReminderHostedService : BackgroundService, IReminderService
                     if (user.AutoGenerateGreetings)
                     {
                         var draft = _greetings.GeneratePersonalized(user, b, age);
-                        var text = await _enhancer.EnhanceAsync(user, b, draft, age, ct);
-                        msg += $"\n\n{text}";
+                        var enhanceSw = Stopwatch.StartNew();
+                        var enhanced = await _enhancer.EnhanceAsync(user, b, draft, age, ct);
+                        enhanceSw.Stop();
+                        msg += $"\n\n{enhanced.Text}";
+                        await _aiEvents.CreateAsync(new AiEvent
+                        {
+                            UserId = user.Id,
+                            TelegramUserId = user.TelegramUserId,
+                            EventType = "enhance",
+                            InputText = draft,
+                            OutputText = enhanced.Text,
+                            IsFallback = enhanced.IsFallback,
+                            FallbackReason = enhanced.FallbackReason,
+                            PromptVersion = enhanced.PromptVersion,
+                            ModelSource = enhanced.ModelSource,
+                            LatencyMs = enhanceSw.Elapsed.TotalMilliseconds
+                        }, ct);
                         replyMarkup = new InlineKeyboardMarkup(new[]
                         {
                             new[]
