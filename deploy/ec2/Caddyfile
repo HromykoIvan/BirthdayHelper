@@ -6,6 +6,15 @@
 {$DOMAIN} {
   encode zstd gzip
   # HTTP-01 challenge пройдёт автоматически на 80/tcp
+  @grafana path /grafana /grafana/*
+  handle @grafana {
+    uri strip_prefix /grafana
+    reverse_proxy grafana:3000
+  }
+
+  @metrics path /metrics
+  respond @metrics 403
+
   reverse_proxy api:8080
 
   @health {

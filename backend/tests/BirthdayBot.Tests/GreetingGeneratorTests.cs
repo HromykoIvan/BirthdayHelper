@@ -1,5 +1,6 @@
 // path: backend/tests/BirthdayBot.Tests/GreetingGeneratorTests.cs
 using BirthdayBot.Domain.Enums;
+using BirthdayBot.Domain.Entities;
 using BirthdayBot.Infrastructure.Services;
 using FluentAssertions;
 using Xunit;
@@ -19,5 +20,25 @@ public class GreetingGeneratorTests
             text.Should().NotBeNullOrWhiteSpace();
             text.Should().Contain("30");
         }
+    }
+
+    [Fact]
+    public void Should_Generate_Personalized_Text_With_Relation_And_Interests()
+    {
+        var gen = new GreetingGenerator();
+        var user = new User { Lang = Language.En, Tone = Tone.Friendly };
+        var birthday = new Birthday
+        {
+            Name = "Alex",
+            Relation = "friend",
+            Interests = "chess"
+        };
+
+        var text = gen.GeneratePersonalized(user, birthday, 28);
+
+        text.Should().Contain("Alex");
+        text.Should().Contain("28");
+        text.Should().Contain("friend");
+        text.Should().Contain("chess");
     }
 }

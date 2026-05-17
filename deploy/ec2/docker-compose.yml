@@ -22,6 +22,42 @@ services:
       - /opt/birthday/.env
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    depends_on:
+      - api
+    volumes:
+      - /opt/birthday/ops/monitoring/prometheus/prometheus.ec2.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - /opt/birthday/ops/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - /opt/birthday/ops/monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+    restart: unless-stopped
+
+  ollama:
+    profiles: ["ai"]
+    image: ollama/ollama:0.3.12
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
 volumes:
   caddy_data:
   caddy_config:
+  prometheus_data:
+  grafana_data:
+  ollama_data:
