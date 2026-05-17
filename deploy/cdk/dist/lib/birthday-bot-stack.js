@@ -125,8 +125,7 @@ class BirthdayBotStack extends aws_cdk_lib_1.Stack {
                 instancesDistribution: {
                     onDemandBaseCapacity: 0,
                     onDemandPercentageAboveBaseCapacity: 0,
-                    spotAllocationStrategy: 'capacity-optimized-prioritized',
-                    spotInstancePools: 2
+                    spotAllocationStrategy: 'capacity-optimized-prioritized'
                 },
                 launchTemplate: {
                     launchTemplateSpecification: {
