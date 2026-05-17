@@ -38,6 +38,12 @@ if (metricsOptions.Enable) app.MapPrometheusScrapingEndpoint(metricsOptions.Scra
 
 app.MapTelegramEndpoints();
 
+var aiEvalOptions = app.Services.GetRequiredService<IOptions<AiEvalOptions>>().Value;
+if (aiEvalOptions.EnableEndpoints)
+{
+    app.MapAiEvalEndpoints();
+}
+
 // Mock messages endpoints (only in Development)
 if (app.Environment.IsDevelopment())
 {

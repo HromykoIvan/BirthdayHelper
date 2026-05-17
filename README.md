@@ -158,6 +158,25 @@ docker compose --profile ai up -d ollama
 
 The reminder flow adds an inline button to improve generated greeting text using the local AI enhancer.
 
+### AI memory and eval loop
+
+AI runtime events are persisted to MongoDB collection `ai_events`:
+
+- intent parse events (input phrase, predicted intent, confidence, prompt version, fallback flags)
+- greeting enhancement events (draft text, output text, fallback reason, model source)
+
+For iterative quality work:
+
+- label expected intent on real phrases
+- compute quality summary (overall and per prompt version)
+- improve prompt version and compare again
+
+Dev eval endpoints (enabled by `AiEval:EnableEndpoints`):
+
+- `GET /api/ai/eval/unlabeled?take=50`
+- `POST /api/ai/eval/label` with `{ "eventId": "...", "expectedIntent": "OpenList" }`
+- `GET /api/ai/eval/summary?take=2000`
+
 ### Useful checks on EC2 (via SSM session)
 
 ```bash

@@ -23,20 +23,24 @@ public static class ServiceCollectionExtensions
         services.Configure<MongoOptions>(cfg.GetSection("Mongo"));
         services.Configure<ReminderOptions>(cfg.GetSection("Reminder"));
         services.Configure<MetricsOptions>(cfg.GetSection("Metrics"));
+        services.Configure<AiEvalOptions>(cfg.GetSection("AiEval"));
         services.Configure<LocalAiOptions>(cfg.GetSection("LocalAi"));
         services.Configure<UserRateLimitOptions>(cfg.GetSection("UserRateLimit"));
+        services.Configure<PromptProfileOptions>(cfg.GetSection("PromptProfiles"));
 
         services.AddSingleton<MongoContext>();
 
         services.AddSingleton<IUserRepository, UserRepository>();
         services.AddSingleton<IBirthdayRepository, BirthdayRepository>();
         services.AddSingleton<IDeliveryLogRepository, DeliveryLogRepository>();
+        services.AddSingleton<IAiEventRepository, AiEventRepository>();
 
         services.AddSingleton<IGreetingGenerator, GreetingGenerator>();
         services.AddSingleton<AiMetrics>();
         services.AddSingleton<IIntentRouter, LocalIntentRouter>();
         services.AddSingleton<IUserUpdateRateLimiter, UserUpdateRateLimiter>();
         services.AddSingleton<IAiGreetingEnhancer, LocalAiGreetingEnhancer>();
+        services.AddSingleton<IAiEvalService, AiEvalService>();
         services.AddSingleton<ILocalizationService, LocalizationService>();
 
         services.AddSingleton<InMemoryConversationState>();
