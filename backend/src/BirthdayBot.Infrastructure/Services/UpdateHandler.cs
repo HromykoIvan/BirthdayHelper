@@ -1252,6 +1252,43 @@ public sealed class UpdateHandler : IUpdateHandler
                     cancellationToken: ct);
                 return true;
 
+            case UserIntentType.GenerateGreetingPreview when !string.IsNullOrWhiteSpace(intent.EntityName):
+                var occasion = string.IsNullOrWhiteSpace(intent.Occasion) ? "особый день" : intent.Occasion.Trim();
+                var previewBirthday = new Birthday
+                {
+                    UserId = user.Id,
+                    Name = intent.EntityName.Trim(),
+                    Date = DateOnly.FromDateTime(DateTime.UtcNow),
+                    Relation = "test"
+                };
+
+                var draft = BuildGreetingPreviewDraft(user.Lang, previewBirthday.FullName, occasion);
+                var enhanceSw = Stopwatch.StartNew();
+                var enhanced = await _enhancer.EnhanceAsync(user, previewBirthday, draft, age: 30, ct);
+                enhanceSw.Stop();
+
+                await _aiEvents.CreateAsync(new AiEvent
+                {
+                    UserId = user.Id,
+                    TelegramUserId = user.TelegramUserId,
+                    EventType = "enhance_test",
+                    InputText = draft,
+                    OutputText = enhanced.Text,
+                    IsFallback = enhanced.IsFallback,
+                    FallbackReason = enhanced.FallbackReason,
+                    PromptVersion = enhanced.PromptVersion,
+                    ModelSource = enhanced.ModelSource,
+                    LatencyMs = enhanceSw.Elapsed.TotalMilliseconds
+                }, ct);
+
+                var responseText = $"🧪 <b>{_i18n.GetText(user.Lang, "ai_test_greeting_title")}</b>\n\n{Formatting.Html(enhanced.Text)}";
+                await _bot.SendTextMessageAsync(chatId,
+                    responseText,
+                    parseMode: ParseMode.Html,
+                    replyMarkup: Keyboards.BackToMenuKb(user.Lang),
+                    cancellationToken: ct);
+                return true;
+
             case UserIntentType.UpdateSettings when intent.Settings is not null:
                 await ApplySettingsUpdateAsync(user, chatId, intent.Settings, ct);
                 return true;
@@ -1260,6 +1297,16 @@ public sealed class UpdateHandler : IUpdateHandler
                 _metrics.TrackIntentFallback("unknown_intent");
                 return false;
         }
+    }
+
+    private static string BuildGreetingPreviewDraft(Language lang, string fullName, string occasion)
+    {
+        return lang switch
+        {
+            Language.Ru => $"{fullName}, поздравляю тебя с {occasion}! Желаю отличного настроения, крепкого здоровья и больших успехов.",
+            Language.Pl => $"{fullName}, wszystkiego najlepszego z okazji {occasion}! Życzę dużo radości, zdrowia i sukcesów.",
+            _ => $"{fullName}, congratulations on {occasion}! Wishing you joy, good health, and great success."
+        };
     }
 
     private async Task ApplySettingsUpdateAsync(

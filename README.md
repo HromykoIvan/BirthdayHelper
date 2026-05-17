@@ -158,6 +158,10 @@ docker compose --profile ai up -d ollama
 
 The reminder flow adds an inline button to improve generated greeting text using the local AI enhancer.
 
+You can also run ad-hoc greeting tests in chat with free text, for example:
+
+- `сгенерируй поздравление для Сергей Калугин на 23 февраля`
+
 ### AI memory and eval loop
 
 AI runtime events are persisted to MongoDB collection `ai_events`:
@@ -234,6 +238,9 @@ For stricter high availability requirements (very low downtime), add a load bala
 
 - **No Grafana data**  
   Check `docker compose logs prometheus` and ensure app metrics are available on internal target (`app:8080/metrics` or `api:8080/metrics`).
+
+- **Grafana URL returns 404**  
+  Ensure rollout uses the latest Caddy/Compose config and starts `grafana` + `prometheus` services (not only `app` and `caddy`).
 
 - **Local AI fallback too often**  
   Verify local model runtime availability and timeout settings in `LocalAi` options.
