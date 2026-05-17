@@ -128,29 +128,63 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Resolve bot instance ID (SSM param or tag)
+      - name: Resolve bot instance ID (ASG/SSM/tag)
         id: get-instance
         run: |
           set -e
           echo "::group::🔍 Resolving EC2 instance ID"
           echo "[$(date -u +'%Y-%m-%d %H:%M:%S UTC')] Looking for bot instance..."
-          
-          PARAM="/birthday-bot/bot-instance-id"
-          if aws ssm get-parameter --name "$PARAM" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
-            IID=$(aws ssm get-parameter --name "$PARAM" --region "${{ env.AWS_REGION }}" --query 'Parameter.Value' --output text)
-            echo "✅ Found instance ID in SSM parameter: $IID"
-          else
-            echo "⚠️ SSM parameter not found, searching by tag..."
+
+          IID=""
+          ASG_NAME=""
+          ASG_PARAM="/birthday-bot/bot-asg-name"
+          LEGACY_PARAM="/birthday-bot/bot-instance-id"
+
+          if aws ssm get-parameter --name "$ASG_PARAM" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+            ASG_NAME=$(aws ssm get-parameter --name "$ASG_PARAM" --region "${{ env.AWS_REGION }}" --query 'Parameter.Value' --output text)
+            echo "✅ Found ASG name in SSM parameter: $ASG_NAME"
+          fi
+
+          if [ -n "$ASG_NAME" ] && [ "$ASG_NAME" != "None" ]; then
+            echo "Trying to resolve instance from ASG..."
+            ATTEMPTS=0
+            MAX_ATTEMPTS=24
+            while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
+              IID=$(aws autoscaling describe-auto-scaling-groups \
+                --region "${{ env.AWS_REGION }}" \
+                --auto-scaling-group-names "$ASG_NAME" \
+                --query "AutoScalingGroups[0].Instances[?LifecycleState=='InService' && HealthStatus=='Healthy'].InstanceId | [0]" \
+                --output text)
+
+              if [ -n "$IID" ] && [ "$IID" != "None" ]; then
+                echo "✅ Found healthy InService instance in ASG: $IID"
+                break
+              fi
+
+              ATTEMPTS=$((ATTEMPTS + 1))
+              echo "Waiting for healthy ASG instance... attempt $ATTEMPTS/$MAX_ATTEMPTS"
+              sleep 5
+            done
+          fi
+
+          if [ -z "$IID" ] || [ "$IID" = "None" ]; then
+            if aws ssm get-parameter --name "$LEGACY_PARAM" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+              IID=$(aws ssm get-parameter --name "$LEGACY_PARAM" --region "${{ env.AWS_REGION }}" --query 'Parameter.Value' --output text)
+              echo "⚠️ Using legacy instance ID from SSM parameter: $IID"
+            fi
+          fi
+
+          if [ -z "$IID" ] || [ "$IID" = "None" ]; then
+            echo "⚠️ SSM parameters did not resolve a running instance, searching by tag..."
             IID=$(aws ec2 describe-instances \
               --region "${{ env.AWS_REGION }}" \
               --filters "Name=tag:Name,Values=BirthdayBotStack/BotInstance" "Name=instance-state-name,Values=running" \
               --query 'Reservations[0].Instances[0].InstanceId' --output text)
-            
-            if [ -z "$IID" ] || [ "$IID" = "None" ]; then
-              echo "❌ ERROR: Could not find running instance with tag BirthdayBotStack/BotInstance"
-              exit 1
-            fi
-            echo "✅ Found instance ID by tag: $IID"
+          fi
+
+          if [ -z "$IID" ] || [ "$IID" = "None" ]; then
+            echo "❌ ERROR: Could not find running bot instance"
+            exit 1
           fi
           
           echo "Instance ID: $IID"
