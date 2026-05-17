@@ -2,6 +2,7 @@ using BirthdayBot.Application.Interfaces;
 using BirthdayBot.Domain.Entities;
 using BirthdayBot.Domain.Enums;
 using BirthdayBot.Domain.Utils;
+using BirthdayBot.Application.UI;
 using Cronos;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -122,11 +123,12 @@ public class ReminderHostedService : BackgroundService, IReminderService
                         var enhanced = await _enhancer.EnhanceAsync(user, b, draft, age, ct);
                         enhanceSw.Stop();
                         msg += $"\n\n{enhanced.Text}";
-                        await _aiEvents.CreateAsync(new AiEvent
+                        var aiEvent = await _aiEvents.CreateAsync(new AiEvent
                         {
                             UserId = user.Id,
                             TelegramUserId = user.TelegramUserId,
-                            EventType = "enhance",
+                            BirthdayId = b.Id,
+                            EventType = "enhance_reminder",
                             InputText = draft,
                             OutputText = enhanced.Text,
                             IsFallback = enhanced.IsFallback,
@@ -135,13 +137,7 @@ public class ReminderHostedService : BackgroundService, IReminderService
                             ModelSource = enhanced.ModelSource,
                             LatencyMs = enhanceSw.Elapsed.TotalMilliseconds
                         }, ct);
-                        replyMarkup = new InlineKeyboardMarkup(new[]
-                        {
-                            new[]
-                            {
-                                InlineKeyboardButton.WithCallbackData(_i18n.GetText(user.Lang, "ai_improve_greeting"), $"ai:improve:{b.Id}")
-                            }
-                        });
+                        replyMarkup = Keyboards.ReminderGreetingActionsKb(user.Lang, aiEvent.Id.ToString());
                     }
 
                     var sent = await _bot.SendTextMessageAsync(

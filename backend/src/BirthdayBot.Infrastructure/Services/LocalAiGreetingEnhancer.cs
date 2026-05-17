@@ -13,17 +13,20 @@ namespace BirthdayBot.Infrastructure.Services;
 
 public sealed class LocalAiGreetingEnhancer : IAiGreetingEnhancer
 {
+    private readonly IAiEventRepository _aiEvents;
     private readonly LocalAiOptions _options;
     private readonly PromptProfileOptions _promptProfiles;
     private readonly AiMetrics _metrics;
     private readonly ILogger<LocalAiGreetingEnhancer> _logger;
 
     public LocalAiGreetingEnhancer(
+        IAiEventRepository aiEvents,
         IOptions<LocalAiOptions> options,
         IOptions<PromptProfileOptions> promptProfiles,
         AiMetrics metrics,
         ILogger<LocalAiGreetingEnhancer> logger)
     {
+        _aiEvents = aiEvents;
         _options = options.Value;
         _promptProfiles = promptProfiles.Value;
         _metrics = metrics;
@@ -60,7 +63,8 @@ public sealed class LocalAiGreetingEnhancer : IAiGreetingEnhancer
                     ModelSource: source);
             }
 
-            var prompt = BuildPrompt(user.Lang, birthday, personalized, age, _promptProfiles.GreetingPromptVersion);
+            var examples = await _aiEvents.ListAcceptedGreetingExamplesAsync(user.Id, 3, ct);
+            var prompt = BuildPrompt(user.Lang, birthday, personalized, age, _promptProfiles.GreetingPromptVersion, examples.Select(x => x.OutputText!).ToArray());
             if (prompt.Length > _options.MaxPromptChars)
             {
                 prompt = prompt[.._options.MaxPromptChars];
@@ -163,7 +167,7 @@ public sealed class LocalAiGreetingEnhancer : IAiGreetingEnhancer
         return sb.ToString().Trim();
     }
 
-    private static string BuildPrompt(Language lang, Birthday birthday, string draft, int age, string promptVersion)
+    private static string BuildPrompt(Language lang, Birthday birthday, string draft, int age, string promptVersion, string[] acceptedExamples)
     {
         var localeHint = lang switch
         {
@@ -171,6 +175,10 @@ public sealed class LocalAiGreetingEnhancer : IAiGreetingEnhancer
             Language.Pl => "Polish",
             _ => "English"
         };
+
+        var examplesBlock = acceptedExamples.Length == 0
+            ? "No accepted examples yet."
+            : string.Join("\n---\n", acceptedExamples.Select((x, i) => $"Example {i + 1}:\n{x}"));
 
         return $"""
         You are an assistant that rewrites birthday wishes.
@@ -186,6 +194,9 @@ public sealed class LocalAiGreetingEnhancer : IAiGreetingEnhancer
         Relation: {birthday.Relation ?? "unknown"}
         Interests: {birthday.Interests ?? "n/a"}
         Notes: {birthday.Notes ?? "n/a"}
+
+        User accepted examples:
+        {examplesBlock}
 
         Draft:
         {draft}

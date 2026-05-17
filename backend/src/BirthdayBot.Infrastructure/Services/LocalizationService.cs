@@ -524,6 +524,22 @@ public class LocalizationService : ILocalizationService
         {(Language.Ru, "ai_fallback_notice"), "Использован базовый шаблон: LLM недоступна."},
         {(Language.Pl, "ai_fallback_notice"), "Użyto szablonu bazowego: LLM jest niedostępny."},
         {(Language.En, "ai_fallback_notice"), "Base template was used: LLM is unavailable."},
+
+        {(Language.Ru, "ai_add_comment"), "💬 Добавить комментарий"},
+        {(Language.Pl, "ai_add_comment"), "💬 Dodaj komentarz"},
+        {(Language.En, "ai_add_comment"), "💬 Add comment"},
+
+        {(Language.Ru, "ai_use_as_example"), "✅ Использовать как пример"},
+        {(Language.Pl, "ai_use_as_example"), "✅ Użyj jako przykład"},
+        {(Language.En, "ai_use_as_example"), "✅ Use as example"},
+
+        {(Language.Ru, "ai_comment_prompt"), "Напишите, что изменить в поздравлении (например: сделай короче и теплее)."},
+        {(Language.Pl, "ai_comment_prompt"), "Napisz, co zmienić w życzeniach (np. krócej i cieplej)."},
+        {(Language.En, "ai_comment_prompt"), "Tell me what to change in the greeting (for example: shorter and warmer)."},
+
+        {(Language.Ru, "ai_example_saved"), "Сохранено как ваш предпочтительный пример стиля."},
+        {(Language.Pl, "ai_example_saved"), "Zapisano jako preferowany przykład stylu."},
+        {(Language.En, "ai_example_saved"), "Saved as your preferred style example."},
     };
 
     public string GetText(Language lang, string key)
