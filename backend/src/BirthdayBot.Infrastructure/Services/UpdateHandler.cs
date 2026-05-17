@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text;
+using System.Diagnostics;
 using BirthdayBot.Application.Interfaces;
 using BirthdayBot.Application.UI;
 using BirthdayBot.Application.Services;
@@ -17,6 +18,8 @@ using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using BirthdayBot.Infrastructure.Options;
 
 namespace BirthdayBot.Infrastructure.Services;
 
@@ -44,6 +47,8 @@ public sealed class UpdateHandler : IUpdateHandler
     private readonly IGreetingGenerator _greetings;
     private readonly IUserUpdateRateLimiter _userRateLimiter;
     private readonly AiMetrics _metrics;
+    private readonly IAiEventRepository _aiEvents;
+    private readonly PromptProfileOptions _promptProfiles;
 
     public UpdateHandler(
         ILogger<UpdateHandler> logger,
@@ -58,6 +63,8 @@ public sealed class UpdateHandler : IUpdateHandler
         IGreetingGenerator greetings,
         IUserUpdateRateLimiter userRateLimiter,
         AiMetrics metrics,
+        IAiEventRepository aiEvents,
+        IOptions<PromptProfileOptions> promptProfiles,
         IDateTimeZoneProvider? tzdb = null)
     {
         _logger = logger;
@@ -72,6 +79,8 @@ public sealed class UpdateHandler : IUpdateHandler
         _greetings = greetings;
         _userRateLimiter = userRateLimiter;
         _metrics = metrics;
+        _aiEvents = aiEvents;
+        _promptProfiles = promptProfiles.Value;
         _tzdb = tzdb ?? DateTimeZoneProviders.Tzdb;
         
         // Initialize Keyboards with localization service
@@ -533,9 +542,25 @@ public sealed class UpdateHandler : IUpdateHandler
                     var today = SystemClock.Instance.GetCurrentInstant().InZone(zone).Date;
                     var (_, age) = DateHelpers.NextBirthday(today, entry.Date);
                     var draft = _greetings.GeneratePersonalized(user, entry, age);
+                    var improveSw = Stopwatch.StartNew();
                     var improved = await _enhancer.EnhanceAsync(user, entry, draft, age, ct);
+                    improveSw.Stop();
 
-                    var text = $"✨ <b>{_i18n.GetText(user.Lang, "ai_improved_title")}</b>\n\n{Formatting.Html(improved)}";
+                    await _aiEvents.CreateAsync(new AiEvent
+                    {
+                        UserId = user.Id,
+                        TelegramUserId = user.TelegramUserId,
+                        EventType = "enhance",
+                        InputText = draft,
+                        OutputText = improved.Text,
+                        IsFallback = improved.IsFallback,
+                        FallbackReason = improved.FallbackReason,
+                        PromptVersion = improved.PromptVersion,
+                        ModelSource = improved.ModelSource,
+                        LatencyMs = improveSw.Elapsed.TotalMilliseconds
+                    }, ct);
+
+                    var text = $"✨ <b>{_i18n.GetText(user.Lang, "ai_improved_title")}</b>\n\n{Formatting.Html(improved.Text)}";
                     await SafeEditMessageAsync(
                         cq.Message!.Chat.Id,
                         cq.Message.MessageId,
@@ -1148,7 +1173,26 @@ public sealed class UpdateHandler : IUpdateHandler
         string text,
         CancellationToken ct)
     {
+        var parseSw = Stopwatch.StartNew();
         var intent = await _intentRouter.ParseAsync(user, text, ct);
+        parseSw.Stop();
+
+        var isFallback = intent.Intent is UserIntentType.None;
+        await _aiEvents.CreateAsync(new AiEvent
+        {
+            UserId = user.Id,
+            TelegramUserId = user.TelegramUserId,
+            EventType = "intent",
+            InputText = text,
+            ParsedIntent = intent.Intent.ToString(),
+            Confidence = intent.Confidence,
+            IsFallback = isFallback,
+            FallbackReason = isFallback ? "no_match" : null,
+            PromptVersion = _promptProfiles.IntentPromptVersion,
+            ModelSource = "local-intent-router",
+            LatencyMs = parseSw.Elapsed.TotalMilliseconds
+        }, ct);
+
         switch (intent.Intent)
         {
             case UserIntentType.None:

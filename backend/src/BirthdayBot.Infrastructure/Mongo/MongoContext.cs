@@ -20,6 +20,7 @@ public class MongoContext
     public IMongoCollection<User> Users => Database.GetCollection<User>("users");
     public IMongoCollection<Birthday> Birthdays => Database.GetCollection<Birthday>("birthdays");
     public IMongoCollection<DeliveryLog> DeliveryLogs => Database.GetCollection<DeliveryLog>("delivery_logs");
+    public IMongoCollection<AiEvent> AiEvents => Database.GetCollection<AiEvent>("ai_events");
 
     public MongoContext(IOptions<MongoOptions> options, ILogger<MongoContext> logger)
     {
@@ -46,6 +47,12 @@ public class MongoContext
             {
                 cm.AutoMap();
                 cm.MapIdMember(x => x.Id).SetIdGenerator(ObjectIdGenerator.Instance);
+            });
+            BsonClassMap.RegisterClassMap<AiEvent>(cm =>
+            {
+                cm.AutoMap();
+                cm.MapIdMember(x => x.Id).SetIdGenerator(ObjectIdGenerator.Instance);
+                cm.GetMemberMap(x => x.CreatedAtUtc).SetSerializer(new DateTimeSerializer(DateTimeKind.Utc));
             });
         }
     }
@@ -85,6 +92,16 @@ public class MongoContext
             Builders<DeliveryLog>.IndexKeys.Ascending(l => l.UserId),
             new CreateIndexOptions { Name = "ix_logs_user" });
             await DeliveryLogs.Indexes.CreateOneAsync(logsIdx, cancellationToken: ct);
+
+            var aiCreatedIdx = new CreateIndexModel<AiEvent>(
+                Builders<AiEvent>.IndexKeys.Descending(e => e.CreatedAtUtc),
+                new CreateIndexOptions { Name = "ix_ai_events_created" });
+            await AiEvents.Indexes.CreateOneAsync(aiCreatedIdx, cancellationToken: ct);
+
+            var aiIntentIdx = new CreateIndexModel<AiEvent>(
+                Builders<AiEvent>.IndexKeys.Ascending(e => e.EventType).Ascending(e => e.ExpectedIntent),
+                new CreateIndexOptions { Name = "ix_ai_events_intent_eval" });
+            await AiEvents.Indexes.CreateOneAsync(aiIntentIdx, cancellationToken: ct);
 
             _indexesEnsured = true;
             _logger.LogInformation("MongoDB indexes are ensured.");

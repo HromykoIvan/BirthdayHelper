@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text;
 using BirthdayBot.Application.Interfaces;
+using BirthdayBot.Application.Models;
 using BirthdayBot.Domain.Entities;
 using BirthdayBot.Domain.Enums;
 using BirthdayBot.Infrastructure.Options;
@@ -13,40 +14,53 @@ namespace BirthdayBot.Infrastructure.Services;
 public sealed class LocalAiGreetingEnhancer : IAiGreetingEnhancer
 {
     private readonly LocalAiOptions _options;
+    private readonly PromptProfileOptions _promptProfiles;
     private readonly AiMetrics _metrics;
     private readonly ILogger<LocalAiGreetingEnhancer> _logger;
 
     public LocalAiGreetingEnhancer(
         IOptions<LocalAiOptions> options,
+        IOptions<PromptProfileOptions> promptProfiles,
         AiMetrics metrics,
         ILogger<LocalAiGreetingEnhancer> logger)
     {
         _options = options.Value;
+        _promptProfiles = promptProfiles.Value;
         _metrics = metrics;
         _logger = logger;
     }
 
-    public async Task<string> EnhanceAsync(User user, Birthday birthday, string draftGreeting, int age, CancellationToken ct = default)
+    public async Task<AiEnhanceResult> EnhanceAsync(User user, Birthday birthday, string draftGreeting, int age, CancellationToken ct = default)
     {
         var sw = Stopwatch.StartNew();
-        _metrics.TrackEnhanceRequest(_options.UseOllama ? "ollama" : "local-template");
+        var source = _options.UseOllama ? "ollama" : "local-template";
+        _metrics.TrackEnhanceRequest(source);
 
         try
         {
             if (!_options.Enable)
             {
                 _metrics.TrackEnhanceFallback("disabled");
-                return draftGreeting;
+                return new AiEnhanceResult(
+                    draftGreeting,
+                    IsFallback: true,
+                    PromptVersion: _promptProfiles.GreetingPromptVersion,
+                    ModelSource: source,
+                    FallbackReason: "disabled");
             }
 
             var personalized = BuildPersonalizedDraft(user, birthday, draftGreeting, age);
 
             if (!_options.UseOllama)
             {
-                return personalized;
+                return new AiEnhanceResult(
+                    personalized,
+                    IsFallback: false,
+                    PromptVersion: _promptProfiles.GreetingPromptVersion,
+                    ModelSource: source);
             }
 
-            var prompt = BuildPrompt(user.Lang, birthday, personalized, age);
+            var prompt = BuildPrompt(user.Lang, birthday, personalized, age, _promptProfiles.GreetingPromptVersion);
             if (prompt.Length > _options.MaxPromptChars)
             {
                 prompt = prompt[.._options.MaxPromptChars];
@@ -66,7 +80,12 @@ public sealed class LocalAiGreetingEnhancer : IAiGreetingEnhancer
             if (!response.IsSuccessStatusCode)
             {
                 _metrics.TrackEnhanceFallback("ollama_http");
-                return personalized;
+                return new AiEnhanceResult(
+                    personalized,
+                    IsFallback: true,
+                    PromptVersion: _promptProfiles.GreetingPromptVersion,
+                    ModelSource: source,
+                    FallbackReason: "ollama_http");
             }
 
             var payload = await response.Content.ReadFromJsonAsync<OllamaResponse>(cancellationToken: ct);
@@ -74,20 +93,34 @@ public sealed class LocalAiGreetingEnhancer : IAiGreetingEnhancer
             if (string.IsNullOrWhiteSpace(text))
             {
                 _metrics.TrackEnhanceFallback("ollama_empty");
-                return personalized;
+                return new AiEnhanceResult(
+                    personalized,
+                    IsFallback: true,
+                    PromptVersion: _promptProfiles.GreetingPromptVersion,
+                    ModelSource: source,
+                    FallbackReason: "ollama_empty");
             }
 
-            return text;
+            return new AiEnhanceResult(
+                text,
+                IsFallback: false,
+                PromptVersion: _promptProfiles.GreetingPromptVersion,
+                ModelSource: source);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Local AI greeting enhance failed, fallback to draft.");
             _metrics.TrackEnhanceFallback("exception");
-            return draftGreeting;
+            return new AiEnhanceResult(
+                draftGreeting,
+                IsFallback: true,
+                PromptVersion: _promptProfiles.GreetingPromptVersion,
+                ModelSource: source,
+                FallbackReason: "exception");
         }
         finally
         {
-            _metrics.TrackEnhanceLatency(sw.Elapsed.TotalMilliseconds, _options.UseOllama ? "ollama" : "local-template");
+            _metrics.TrackEnhanceLatency(sw.Elapsed.TotalMilliseconds, source);
         }
     }
 
@@ -130,7 +163,7 @@ public sealed class LocalAiGreetingEnhancer : IAiGreetingEnhancer
         return sb.ToString().Trim();
     }
 
-    private static string BuildPrompt(Language lang, Birthday birthday, string draft, int age)
+    private static string BuildPrompt(Language lang, Birthday birthday, string draft, int age, string promptVersion)
     {
         var localeHint = lang switch
         {
@@ -142,6 +175,7 @@ public sealed class LocalAiGreetingEnhancer : IAiGreetingEnhancer
         return $"""
         You are an assistant that rewrites birthday wishes.
         Requirements:
+        - Prompt profile version: {promptVersion}
         - Keep language: {localeHint}
         - Keep tone warm and concise (2-4 sentences)
         - Mention recipient by name
