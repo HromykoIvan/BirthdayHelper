@@ -14,6 +14,9 @@ public sealed class LocalIntentRouter : IIntentRouter
     private static readonly Regex RemoveRegex = new(
         @"^(удали|удалить|remove|delete|usun|usu[ńn])\s+(?<name>.+)$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex GreetingPreviewRegex = new(
+        @"^(сгенерируй|создай|generate)\s+(поздравление|greeting)\s+для\s+(?<name>.+?)\s+на\s+(?<occasion>.+)$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private readonly IDateTimeZoneProvider _tzdb;
     private readonly AiMetrics _metrics;
@@ -67,6 +70,17 @@ public sealed class LocalIntentRouter : IIntentRouter
                 if (!string.IsNullOrWhiteSpace(name))
                 {
                     return Task.FromResult(IntentParseResult.ForRemove(name));
+                }
+            }
+
+            var greetingMatch = GreetingPreviewRegex.Match(text);
+            if (greetingMatch.Success)
+            {
+                var name = greetingMatch.Groups["name"].Value.Trim();
+                var occasion = greetingMatch.Groups["occasion"].Value.Trim();
+                if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(occasion))
+                {
+                    return Task.FromResult(IntentParseResult.ForGreetingPreview(name, occasion));
                 }
             }
 

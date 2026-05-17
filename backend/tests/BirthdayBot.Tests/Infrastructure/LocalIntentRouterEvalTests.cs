@@ -22,6 +22,7 @@ public class LocalIntentRouterEvalTests
     [InlineData("open settings", UserIntentType.OpenSettings)]
     [InlineData("помощь", UserIntentType.OpenHelp)]
     [InlineData("добавить день рождения", UserIntentType.OpenAddBirthday)]
+    [InlineData("сгенерируй поздравление для Сергей Калугин на 23 февраля", UserIntentType.GenerateGreetingPreview)]
     [InlineData("18:30", UserIntentType.UpdateSettings)]
     [InlineData("friendly", UserIntentType.UpdateSettings)]
     [InlineData("language en", UserIntentType.UpdateSettings)]

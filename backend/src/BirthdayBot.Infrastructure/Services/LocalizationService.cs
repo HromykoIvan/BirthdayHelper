@@ -508,6 +508,10 @@ public class LocalizationService : ILocalizationService
         {(Language.Ru, "ai_improved_title"), "Улучшенное поздравление"},
         {(Language.Pl, "ai_improved_title"), "Ulepszone życzenia"},
         {(Language.En, "ai_improved_title"), "Improved greeting"},
+
+        {(Language.Ru, "ai_test_greeting_title"), "Тестовое поздравление"},
+        {(Language.Pl, "ai_test_greeting_title"), "Testowe życzenia"},
+        {(Language.En, "ai_test_greeting_title"), "Test greeting"},
     };
 
     public string GetText(Language lang, string key)

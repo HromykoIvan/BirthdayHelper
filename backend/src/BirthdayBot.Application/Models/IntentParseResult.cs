@@ -10,12 +10,14 @@ public enum UserIntentType
     OpenAddBirthday = 3,
     OpenList = 4,
     RemoveByName = 5,
-    UpdateSettings = 6
+    UpdateSettings = 6,
+    GenerateGreetingPreview = 7
 }
 
 public sealed record IntentParseResult(
     UserIntentType Intent,
     string? EntityName = null,
+    string? Occasion = null,
     SettingsUpdate? Settings = null,
     bool RequiresConfirmation = false,
     double Confidence = 0d)
@@ -27,6 +29,9 @@ public sealed record IntentParseResult(
 
     public static IntentParseResult ForRemove(string entityName, double confidence = 0.8d) =>
         new(UserIntentType.RemoveByName, EntityName: entityName, RequiresConfirmation: true, Confidence: confidence);
+
+    public static IntentParseResult ForGreetingPreview(string entityName, string occasion, double confidence = 0.75d) =>
+        new(UserIntentType.GenerateGreetingPreview, EntityName: entityName, Occasion: occasion, Confidence: confidence);
 
     public static IntentParseResult ForSettings(SettingsUpdate update, double confidence = 0.7d) =>
         new(UserIntentType.UpdateSettings, Settings: update, Confidence: confidence);
