@@ -1,7 +1,7 @@
 import {
-  Stack, StackProps, CfnOutput, RemovalPolicy,
+  Stack, StackProps, CfnOutput, RemovalPolicy, Fn,
   aws_ec2 as ec2, aws_iam as iam, aws_ssm as ssm,
-  aws_ecr as ecr
+  aws_ecr as ecr, aws_autoscaling as autoscaling
 } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
@@ -142,34 +142,97 @@ export class BirthdayBotStack extends Stack {
       'systemctl start birthday'
     );
 
-    // --- EC2 Instance for Bot ---
-    const instance = new ec2.Instance(this, 'BotInstance', {
-      vpc,
-      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
-      securityGroup: botSg,
-      role,
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.MICRO),
-      machineImage: amzn2023Arm,
-      userData,
-      ssmSessionPermissions: true
+    // --- Launch Template + ASG (Spot-first with On-Demand fallback) ---
+    const imageConfig = amzn2023Arm.getImage(this);
+    const launchTemplate = new ec2.CfnLaunchTemplate(this, 'BotLaunchTemplate', {
+      launchTemplateName: `${this.stackName}-bot-lt`,
+      launchTemplateData: {
+        imageId: imageConfig.imageId,
+        instanceType: 't4g.micro',
+        iamInstanceProfile: { name: profile.ref },
+        securityGroupIds: [botSg.securityGroupId],
+        userData: Fn.base64(userData.render()),
+        metadataOptions: {
+          httpTokens: 'required',
+          httpEndpoint: 'enabled'
+        },
+        blockDeviceMappings: [
+          {
+            deviceName: '/dev/xvda',
+            ebs: {
+              volumeSize: 8,
+              volumeType: 'gp3',
+              deleteOnTermination: true
+            }
+          }
+        ],
+        tagSpecifications: [
+          {
+            resourceType: 'instance',
+            tags: [
+              { key: 'Name', value: `${this.stackName}/BotInstance` },
+              { key: 'Service', value: 'birthday-bot' }
+            ]
+          }
+        ]
+      }
     });
-    (instance.node.defaultChild as ec2.CfnInstance).iamInstanceProfile = profile.ref;
+
+    const asg = new autoscaling.CfnAutoScalingGroup(this, 'BotAsg', {
+      minSize: '1',
+      maxSize: '1',
+      desiredCapacity: '1',
+      vpcZoneIdentifier: vpc.selectSubnets({ subnetType: ec2.SubnetType.PUBLIC }).subnetIds,
+      healthCheckType: 'EC2',
+      healthCheckGracePeriod: 180,
+      mixedInstancesPolicy: {
+        instancesDistribution: {
+          onDemandBaseCapacity: 0,
+          onDemandPercentageAboveBaseCapacity: 0,
+          spotAllocationStrategy: 'capacity-optimized-prioritized',
+          spotInstancePools: 2
+        },
+        launchTemplate: {
+          launchTemplateSpecification: {
+            launchTemplateId: launchTemplate.ref,
+            version: launchTemplate.attrLatestVersionNumber
+          },
+          overrides: [
+            { instanceType: 't4g.micro' },
+            { instanceType: 't4g.small' },
+            { instanceType: 't4g.nano' }
+          ]
+        }
+      },
+      tags: [
+        {
+          key: 'Name',
+          value: `${this.stackName}/BotInstance`,
+          propagateAtLaunch: true
+        },
+        {
+          key: 'Service',
+          value: 'birthday-bot',
+          propagateAtLaunch: true
+        }
+      ]
+    });
+    asg.addDependency(launchTemplate);
 
     // --- SSM Parameter for GitHub Actions ---
-    const botInstanceParam = new ssm.StringParameter(this, 'BotInstanceIdParam', {
-      parameterName: '/birthday-bot/bot-instance-id',
-      stringValue: instance.instanceId,
-      description: 'Bot EC2 Instance ID for GitHub Actions deployment',
+    const botAsgParam = new ssm.StringParameter(this, 'BotAsgNameParam', {
+      parameterName: '/birthday-bot/bot-asg-name',
+      stringValue: asg.ref,
+      description: 'Bot Auto Scaling Group name for GitHub Actions deployment',
     });
     // Keep parameter across stack replacement/removal.
-    (botInstanceParam.node.defaultChild as ssm.CfnParameter).applyRemovalPolicy(RemovalPolicy.RETAIN);
+    (botAsgParam.node.defaultChild as ssm.CfnParameter).applyRemovalPolicy(RemovalPolicy.RETAIN);
 
     // --- Outputs ---
-    new CfnOutput(this, 'PublicIp', { value: instance.instancePublicIp });
-    new CfnOutput(this, 'InstanceId', { 
-      value: instance.instanceId,
-      exportName: 'BirthdayBot-InstanceId',
-      description: 'Bot EC2 Instance ID'
+    new CfnOutput(this, 'AutoScalingGroupName', {
+      value: asg.ref,
+      exportName: 'BirthdayBot-AutoScalingGroupName',
+      description: 'Bot Auto Scaling Group name'
     });
     new CfnOutput(this, 'EcrRepoUri', { value: repository.repositoryUri });
   }

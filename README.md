@@ -1,124 +1,174 @@
-# BirthdayBot — Telegram напоминания о днях рождения
+# BirthdayBot
 
-## Кратко
-Рабочий шаблон на .NET 8 с Clean Architecture, MongoDB, Telegram webhook (Minimal API), фоновым сервисом (cron каждую минуту), i18n генератором поздравлений (RU/PL/EN), Docker/Compose, AWS CDK для деплоя на EC2, GitHub Actions CI/CD с OIDC, health-checks, Prometheus метрики и rate-limiting.
+BirthdayBot is a .NET 8 Telegram bot that sends birthday reminders and supports interactive management of users and birthdays.  
+The project includes a production-ready deployment path on AWS with Docker, Caddy, CDK, and GitHub Actions.
 
----
+## What This Repository Contains
 
-## 📚 Документация
+- Clean Architecture backend (`backend/src/BirthdayBot.Api`)
+- Telegram webhook endpoint (Minimal API)
+- Reminder background service (cron-like checks every minute)
+- MongoDB integration
+- Docker-based runtime (`docker-compose.yml`)
+- AWS CDK infrastructure (`deploy/cdk`)
+- GitHub Actions CI/CD (`.github/workflows/build-and-push.yml`)
 
-- **[LOCAL_TESTING.md](LOCAL_TESTING.md)** — Подробное руководство по локальному тестированию (Docker Compose, hot reload, юнит-тесты, интеграционные тесты, моки)
+## Current Production Architecture
 
----
+The infrastructure is optimized for low cost while avoiding full Spot-only risk:
 
-## Шаг-за-шагом
+- Auto Scaling Group with capacity `1` instance
+- Mixed Instances policy:
+  - Spot-first
+  - On-Demand fallback when Spot is unavailable
+- ARM64 instance family (`t4g.*`)
+- Docker Compose runtime on EC2
+- Caddy as reverse proxy + HTTPS termination
+- Secrets pulled from AWS Secrets Manager at deploy/runtime
+- Rollout via AWS SSM RunCommand from GitHub Actions
 
-### Шаг 1. Локальный запуск через docker-compose
-1. Установи Docker + Docker Compose.
-2. Создай `.env` из `.env.example` и заполни:
-   - `TELEGRAM_BOT_TOKEN` — токен твоего бота из @BotFather.
-   - `TELEGRAM_WEBHOOK_SECRET` — произвольная строка для валидации вебхука.
-   - `NGROK_AUTHTOKEN` и `NGROK_DOMAIN` — если хочешь быстрый публичный URL.
-3. Запусти:
-   ```bash
-   docker-compose up -d --build
-4. После старта получишь публичный URL от ngrok (https://<NGROK_DOMAIN>). Установи webhook:
-    curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
-    -H "Content-Type: application/json" \
-    -d "{\"url\":\"https://${NGROK_DOMAIN}/telegram/webhook\",\"secret_token\":\"${TELEGRAM_WEBHOOK_SECRET}\"}"
-5. Напиши боту /start. Проверь health и метрики:
-    curl http://localhost:8080/health/ready
-    curl http://localhost:8080/metrics
+Important: with desired capacity `1`, instance replacement can still cause short interruptions while a new node boots.
 
-### Шаг 2. Добавь запись в БД
-    /add_birthday → бот спросит имя → дату YYYY-MM-DD → таймзону (Enter — по умолчанию Europe/Warsaw).
-    /list — список с inline-кнопками удаления.
-    /settings — отправь, например:
-    09:30 или Europe/Warsaw или ru/pl/en или auto on/auto off или formal/friendly.
+## Prerequisites
 
-### Шаг 3. AWS CDK деплой
-    Используется AWS CDK для автоматического развертывания на EC2 с Caddy reverse proxy.
-    
-    **Быстрый старт:**
-    1. Настройте AWS OIDC (см. `deploy/cdk/SETUP.md`)
-    2. Создайте GitHub Repository Variables
-    3. Создайте SSM параметры с секретами
-    4. Сделайте push в ветку `master` — автоматический деплой
-    
-    **Ручной деплой:**
-    ```bash
-    cd deploy/cdk
-    npm install
-    export DOMAIN_NAME="bot.example.com"
-    export CDK_DEFAULT_ACCOUNT="123456789012"
-    export CDK_DEFAULT_REGION="us-east-1"
-    npm run deploy
-    ```
-    
-    **Что создается:**
-    - EC2 t4g.micro (ARM64) с Amazon Linux 2023
-    - Docker контейнер с Birthday Bot
-    - Caddy с автоматическим HTTPS
-    - IAM роли для ECR и SSM доступа
+- .NET 8 SDK
+- Docker + Docker Compose
+- Node.js 20+ (for CDK)
+- AWS account with required IAM permissions
+- Telegram bot token from BotFather
 
-    Переменные окружения (API)
-    | Variable                  | Description                             | Example                                            |
-    | ------------------------- | --------------------------------------- | -------------------------------------------------- |
-    | `MONGODB_URI`             | строка подключения к MongoDB            | `mongodb://mongodb:27017/birthdays?replicaSet=rs0` |
-    | `MONGO_DBNAME`            | имя БД                                  | `birthdays`                                        |
-    | `TELEGRAM_BOT_TOKEN`      | токен бота                              | `123456:ABC...`                                    |
-    | `TELEGRAM_WEBHOOK_SECRET` | секрет для валидации заголовка Telegram | `REPLACE_ME_WEBHOOK_SECRET`                        |
-    | `ASPNETCORE_URLS`         | адреса Kestrel                          | `http://0.0.0.0:8080`                              |
+## Local Development
 
-   GitHub Repository Variables (для CDK деплоя)
-    - AWS_ACCOUNT_ID — 123456789012
-    - AWS_REGION — us-east-1
-    - AWS_ROLE_TO_ASSUME — ARN роли OIDC для GitHub
-    - DOMAIN_NAME — bot.example.com
-    - ECR_REPO — birthday-helper
+1. Create `.env` from your template and fill required variables.
+2. Start services:
 
-    Mongo индексы
-        Индексы создаются автоматически при старте:
-        Users: уникальный по TelegramUserId
-        Birthdays: UserId, и нестрогий (UserId, Name) (включи уникальность при необходимости)
-        DeliveryLog: UserId
+```bash
+docker compose up -d --build
+```
 
-    Наблюдаемость/Безопасность
-        Health: /health/live, /health/ready, /health/startup, /healthz
-        Prometheus: /metrics (через OpenTelemetry exporter)
-        Rate limiting webhook: фиксированное окно 60 req/min/IP
-        NetworkPolicy: разрешает egress к DNS, Mongo и TCP/443 в интернет (для Telegram). У Telegram плавающие IP — точное ограничение по IP невозможно без egress-gateway
+3. Verify local health:
 
-    Частые проблемы
-        Webhook 401 — не совпадает X-Telegram-Bot-Api-Secret-Token. Проверь SSM параметр и что он совпадает с тем, что задавал в setWebhook.
-        CDK Bootstrap ошибки — убедись, что OIDC роль имеет права на S3 и CloudFormation.
-        EC2 недоступен — проверь Security Group, убедись что порты 80/443 открыты.
-        Caddy не запускается — проверь DNS настройки домена.
-        TZ — используй точные ID из tzdb (например, Europe/Warsaw). В /settings можно прислать любой валидный ID.
-        Состояние диалогов — в MVP хранится в памяти. Для продакшен-масштабирования добавь Redis (stateful).
-    
-    AWS Secrets Manager
-        Создайте секреты в AWS Secrets Manager:
-        ```bash
-        aws secretsmanager create-secret --name "birthday-bot/telegram-token" \
-          --secret-string "YOUR_TOKEN"
-        aws secretsmanager create-secret --name "birthday-bot/mongo-url" \
-          --secret-string "mongodb://..."
-        aws secretsmanager create-secret --name "birthday-bot/duckdns-token" \
-          --secret-string "YOUR_DUCKDNS_TOKEN"
-        ```
+```bash
+curl http://localhost:8080/health/ready
+```
 
-    CI/CD автоматизация
-        При push в master автоматически:
-        1. Собирается Docker образ из Dockerfile
-        2. Пушится в ECR (birthday-bot:latest)
-        3. Через SSM отправляется команда на EC2 инстанс
-        4. На инстансе выполняется ops/deploy.sh:
-           - Обновляются секреты из AWS Secrets Manager
-           - Подтягивается свежий образ из ECR
-           - Перезапускается docker compose с обновленным .env
-        
-        Все управляется через .github/workflows/deploy.yml
+4. Register webhook (if exposing publicly):
 
-    Лицензия
-        MIT
+```bash
+curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d "{\"url\":\"https://${PUBLIC_DOMAIN}/telegram/webhook\",\"secret_token\":\"${TELEGRAM_WEBHOOK_SECRET}\"}"
+```
+
+## AWS Deployment (CDK + GitHub Actions)
+
+### 1) Configure GitHub repository variables
+
+Required variables:
+
+- `AWS_REGION`
+- `AWS_ACCOUNT_ID`
+- `AWS_ROLE_TO_ASSUME` (OIDC role ARN)
+- `DOMAIN_NAME`
+- `ECR_REPO`
+
+### 2) Create required AWS secrets
+
+Minimum:
+
+- `birthday-bot/telegram-token`
+- `birthday-bot/mongo-url`
+- `birthday-bot/webhook-secret` (optional but recommended)
+- `birthday-bot/duckdns-token` (optional)
+
+You can also use unified secret `birthday-bot/all-config` if your workflow/scripts support it.
+
+### 3) Bootstrap and deploy CDK
+
+```bash
+cd deploy/cdk
+npm ci
+npm run deploy
+```
+
+### 4) CI/CD flow
+
+On push to `master` (for configured paths), the pipeline:
+
+1. Runs tests
+2. Builds ARM64 Docker image
+3. Pushes image to ECR
+4. Resolves active EC2 instance from ASG/SSM/tag
+5. Executes rollout via SSM:
+   - sync compose + caddy config
+   - refresh `.env` from Secrets Manager
+   - pull and restart containers
+   - run health verification
+
+## Runtime and Operations
+
+### Health endpoints
+
+- `/health/live`
+- `/health/ready`
+- `/health/startup`
+- `/healthz`
+
+### Useful checks on EC2 (via SSM session)
+
+```bash
+cd /opt/birthday
+docker compose ps
+docker compose logs --tail=100 app
+curl http://localhost:8080/health/ready
+```
+
+### Manual rollout helper
+
+```bash
+./scripts/rollout.sh latest
+```
+
+## Cost Notes
+
+This setup is cost-optimized for small workloads:
+
+- Spot-first ASG significantly lowers EC2 compute cost
+- On-Demand fallback keeps deployment resilient to Spot shortages
+- Single-instance topology minimizes baseline spend
+- `gp3` root volume keeps storage cheap
+
+For stricter high availability requirements (very low downtime), add a load balancer and at least 2 active instances.
+
+## Security Notes
+
+- GitHub Actions uses OIDC (no long-lived AWS keys)
+- Secrets are fetched from Secrets Manager, not committed to git
+- Webhook secret validation is enabled
+- SSM is used for remote commands/session access
+
+## Repository Layout
+
+- `backend/` — application source and tests
+- `deploy/cdk/` — infrastructure as code
+- `ops/` — runtime scripts and service config
+- `scripts/` — operational helper scripts
+- `.github/workflows/` — CI/CD pipelines
+
+## Troubleshooting
+
+- **Deployment cannot find instance**  
+  Check `/birthday-bot/bot-asg-name`, ASG health, and required EC2 tags.
+
+- **Container is not healthy**  
+  Review `docker compose logs app` and verify generated `.env`.
+
+- **Webhook 401**  
+  Ensure `Bot__WebhookSecretToken` matches Telegram webhook secret.
+
+- **TLS not issuing**  
+  Confirm DNS resolves to the current public IP and ports `80/443` are open.
+
+## License
+
+MIT
