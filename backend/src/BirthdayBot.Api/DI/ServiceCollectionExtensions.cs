@@ -11,7 +11,6 @@ using Telegram.Bot;
 using BirthdayBot.Application.Services;
 using BirthdayBot.Infrastructure.Sessions;
 using BirthdayBot.Infrastructure.Geo;
-using BirthdayBot.Infrastructure.Flows;
 
 namespace BirthdayBot.Api.DI;
 
@@ -59,9 +58,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IConversationSessionStore, MongoConversationSessionStore>();
         services.AddSingleton<IAiFeedbackSessionStore, MongoAiFeedbackSessionStore>();
         services.AddScoped<IWizardFlow, AddBirthdayWizardFlow>();
-        // Хранилище сессий мастера
-        services.AddSingleton<IAddBirthdayWizardSessionStore, InMemoryAddBirthdayWizardSessionStore>();
-
         // TimeZoneResolver + HttpClient
         services.AddHttpClient<ITimeZoneResolver, TimeZoneResolver>();
 
