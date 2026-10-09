@@ -26,6 +26,7 @@ public static class ServiceCollectionExtensions
         services.Configure<AiEvalOptions>(cfg.GetSection("AiEval"));
         services.Configure<LocalAiOptions>(cfg.GetSection("LocalAi"));
         services.Configure<OpenAiOptions>(cfg.GetSection("OpenAi"));
+        services.Configure<VkImportOptions>(cfg.GetSection("VkImport"));
         services.Configure<UserRateLimitOptions>(cfg.GetSection("UserRateLimit"));
         services.Configure<PromptProfileOptions>(cfg.GetSection("PromptProfiles"));
 
@@ -55,6 +56,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<InMemoryConversationState>();
         services.AddScoped<IUpdateHandler, UpdateHandler>();
         services.AddScoped<TelegramBirthdayImportService>();
+        services.AddHttpClient<VkImportService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
         services.AddMemoryCache();
         services.AddSingleton<IConversationSessionStore, MongoConversationSessionStore>();
         services.AddSingleton<IAiFeedbackSessionStore, MongoAiFeedbackSessionStore>();
