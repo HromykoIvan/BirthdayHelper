@@ -118,75 +118,7 @@ public sealed class TelegramBirthdayImportService
             var content = utf8.GetString(bytes.ToArray());
             var parsed = ContactImportParser.Parse(filename, content);
 
-            if (parsed.Entries.Count == 0)
-            {
-                await _bot.SendTextMessageAsync(
-                    chatId,
-                    user.Lang switch
-                    {
-                        Language.Ru => $"В файле нет подходящих дней рождения. Без даты: {parsed.WithoutBirthday}, некорректных: {parsed.Invalid}.",
-                        Language.Pl => "W pliku nie znaleziono poprawnych dat urodzin.",
-                        _ => "No valid birthdays were found in the file."
-                    },
-                    cancellationToken: ct);
-                return;
-            }
-
-            var existing = await _database.Birthdays
-                .Find(b => b.UserId == user.Id)
-                .ToListAsync(ct);
-
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            var datesByName = new Dictionary<string, string>(StringComparer.Ordinal);
-            var candidates = new List<BirthdayImportCandidate>();
-            foreach (var entry in parsed.Entries)
-            {
-                var normalizedName = Normalize(entry.FullName);
-                var dateStamp = $"{entry.Birthday.Month:D2}{entry.Birthday.Day:D2}";
-                var fingerprint = $"{normalizedName}|{dateStamp}";
-                var nameMatches = existing.Where(b =>
-                    Normalize(b.FullName) == normalizedName).ToArray();
-
-                var fileNameConflict = datesByName.TryGetValue(normalizedName, out var priorDate) &&
-                                       priorDate != dateStamp;
-                datesByName.TryAdd(normalizedName, dateStamp);
-                var repeatedInFile = !seen.Add(fingerprint);
-                var exactMatch = repeatedInFile || nameMatches.Any(b =>
-                    b.Date.Month == entry.Birthday.Month &&
-                    b.Date.Day == entry.Birthday.Day);
-                var status = exactMatch ? "Duplicate"
-                    : nameMatches.Length > 0 || fileNameConflict ? "Conflict"
-                    : "New";
-
-                candidates.Add(new BirthdayImportCandidate
-                {
-                    Index = candidates.Count,
-                    FirstName = entry.FirstName,
-                    LastName = entry.LastName,
-                    Date = entry.Birthday,
-                    YearKnown = entry.YearKnown,
-                    Status = status,
-                    Selected = status == "New"
-                });
-            }
-
-            var session = new BirthdayImportSessionDocument
-            {
-                ChatId = chatId,
-                UserId = user.Id,
-                Source = extension,
-                Candidates = candidates,
-                WithoutBirthday = parsed.WithoutBirthday,
-                Invalid = parsed.Invalid,
-                ExpiresAtUtc = DateTime.UtcNow.AddMinutes(60)
-            };
-            await _sessions.ReplaceOneAsync(
-                x => x.ChatId == chatId,
-                session,
-                new ReplaceOptions { IsUpsert = true },
-                ct);
-
-            await SendPreviewAsync(user, chatId, session, 0, messageId: null, ct);
+            await StartPreviewAsync(user, chatId, extension, parsed, ct);
         }
         catch (DecoderFallbackException)
         {
@@ -209,6 +141,89 @@ public sealed class TelegramBirthdayImportService
                 "Could not open this contact export. Try exporting it as Google CSV or vCard.",
                 cancellationToken: ct);
         }
+    }
+
+    /// <summary>
+    /// Common preview used by both file exports and VK ID. Nothing is saved until explicit confirmation.
+    /// Only name, day/month and optional birth year enter the Mongo import session.
+    /// </summary>
+    public async Task StartPreviewAsync(
+        User user,
+        long chatId,
+        string source,
+        ContactImportParser.Result parsed,
+        CancellationToken ct)
+    {
+        if (parsed.Entries.Count == 0)
+        {
+            await _bot.SendTextMessageAsync(
+                chatId,
+                user.Lang switch
+                {
+                    Language.Ru => $"В файле нет подходящих дней рождения. Без даты: {parsed.WithoutBirthday}, некорректных: {parsed.Invalid}.",
+                    Language.Pl => "W pliku nie znaleziono poprawnych dat urodzin.",
+                    _ => "No valid birthdays were found in the file."
+                },
+                cancellationToken: ct);
+            return;
+        }
+
+        var existing = await _database.Birthdays
+            .Find(b => b.UserId == user.Id)
+            .ToListAsync(ct);
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var datesByName = new Dictionary<string, string>(StringComparer.Ordinal);
+        var candidates = new List<BirthdayImportCandidate>();
+        foreach (var entry in parsed.Entries)
+        {
+            var normalizedName = Normalize(entry.FullName);
+            var dateStamp = $"{entry.Birthday.Month:D2}{entry.Birthday.Day:D2}";
+            var fingerprint = $"{normalizedName}|{dateStamp}";
+            var nameMatches = existing.Where(b =>
+                Normalize(b.FullName) == normalizedName).ToArray();
+
+            var fileNameConflict = datesByName.TryGetValue(normalizedName, out var priorDate) &&
+                                   priorDate != dateStamp;
+            datesByName.TryAdd(normalizedName, dateStamp);
+            var repeatedInFile = !seen.Add(fingerprint);
+            var exactMatch = repeatedInFile || nameMatches.Any(b =>
+                b.Date.Month == entry.Birthday.Month &&
+                b.Date.Day == entry.Birthday.Day);
+            var status = exactMatch ? "Duplicate"
+                : nameMatches.Length > 0 || fileNameConflict ? "Conflict"
+                : "New";
+
+            candidates.Add(new BirthdayImportCandidate
+            {
+                Index = candidates.Count,
+                FirstName = entry.FirstName,
+                LastName = entry.LastName,
+                Date = entry.Birthday,
+                YearKnown = entry.YearKnown,
+                Status = status,
+                Selected = status == "New"
+            });
+        }
+
+        var session = new BirthdayImportSessionDocument
+        {
+            ChatId = chatId,
+            UserId = user.Id,
+            Source = extension,
+            Candidates = candidates,
+            WithoutBirthday = parsed.WithoutBirthday,
+            Invalid = parsed.Invalid,
+            ExpiresAtUtc = DateTime.UtcNow.AddMinutes(60)
+        };
+        await _sessions.ReplaceOneAsync(
+            x => x.ChatId == chatId,
+            session,
+            new ReplaceOptions { IsUpsert = true },
+            ct);
+
+        await SendPreviewAsync(user, chatId, session, 0, messageId: null, ct);
+
     }
 
     public async Task HandleCallbackAsync(
