@@ -97,6 +97,16 @@ public class MongoContext
             new CreateIndexOptions { Name = "ix_logs_user" });
             await DeliveryLogs.Indexes.CreateOneAsync(logsIdx, cancellationToken: ct);
 
+            var deliveryKeyIdx = new CreateIndexModel<DeliveryLog>(
+                Builders<DeliveryLog>.IndexKeys.Ascending(l => l.DeliveryKey),
+                new CreateIndexOptions
+                {
+                    Name = "ux_delivery_key",
+                    Unique = true,
+                    Sparse = true
+                });
+            await DeliveryLogs.Indexes.CreateOneAsync(deliveryKeyIdx, cancellationToken: ct);
+
             var aiCreatedIdx = new CreateIndexModel<AiEvent>(
                 Builders<AiEvent>.IndexKeys.Descending(e => e.CreatedAtUtc),
                 new CreateIndexOptions { Name = "ix_ai_events_created" });
