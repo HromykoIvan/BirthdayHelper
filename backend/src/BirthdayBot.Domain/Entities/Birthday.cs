@@ -31,6 +31,7 @@ public sealed class Birthday
     public string? Interests { get; set; }      // hobbies/interests for LLM context
     public string? Profession { get; set; }     // optional profession/role
     public string? Notes { get; set; }          // free-form notes
+    public string? GiftIdeas { get; set; }       // gift ideas and preferences
     public int?   ReminderDaysBefore { get; set; }
     
     /// <summary>
