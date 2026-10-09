@@ -15,23 +15,32 @@ public class LocalizationService : ILocalizationService
 
         // Help
         {(Language.Ru, "help"),
-            "<b>📖 Справка</b>\n\n" +
-            "🎂 <b>Добавить ДР</b> — пошаговый мастер добавления\n" +
-            "📋 <b>Мои записи</b> — список всех дней рождения по месяцам\n" +
-            "⚙️ <b>Настройки</b> — время уведомлений, язык, тон\n\n" +
-            "<i>Команды:</i> /add_birthday, /list, /remove, /settings"},
+            "<b>BirthdayHelper</b> — помню важное о твоих близких.\\n\\n" +
+            "👥 <b>Мои люди</b> — карточки с интересами, подарками и заметками\\n" +
+            "🎂 <b>Ближайшие</b> — дни рождения по календарю\\n" +
+            "➕ <b>Добавить</b> — достаточно имени и даты\\n" +
+            "📥 <b>Импорт</b> — контакты из CSV или VCF\\n\\n" +
+            "Можно просто написать: «Добавь Аню, 12 июня, любит книги».\\n" +
+            "В карточке есть «Запомнить факт». Дополнять данные необязательно.\\n\\n" +
+            "<i>Команды:</i> /start, /list, /add_birthday, /import, /settings"},
         {(Language.Pl, "help"),
-            "<b>📖 Pomoc</b>\n\n" +
-            "🎂 <b>Dodaj urodziny</b> — kreator krok po kroku\n" +
-            "📋 <b>Moje wpisy</b> — lista urodzin wg miesięcy\n" +
-            "⚙️ <b>Ustawienia</b> — czas powiadomień, język, ton\n\n" +
-            "<i>Komendy:</i> /add_birthday, /list, /remove, /settings"},
+            "<b>BirthdayHelper</b> — pamiętam ważne rzeczy o bliskich.\\n\\n" +
+            "👥 <b>Moi bliscy</b> — profile, zainteresowania i prezenty\\n" +
+            "🎂 <b>Najbliższe</b> — kalendarz urodzin\\n" +
+            "➕ <b>Dodaj</b> — wystarczą imię i data\\n" +
+            "📥 <b>Import</b> — kontakty CSV lub VCF\\n\\n" +
+            "Napisz: „Dodaj Annę, 12 czerwca, lubi książki”.\\n" +
+            "Szczegóły można uzupełnić później.\\n\\n" +
+            "<i>Komendy:</i> /start, /list, /add_birthday, /import, /settings"},
         {(Language.En, "help"),
-            "<b>📖 Help</b>\n\n" +
-            "🎂 <b>Add Birthday</b> — step-by-step wizard\n" +
-            "📋 <b>My Entries</b> — birthdays by month\n" +
-            "⚙️ <b>Settings</b> — notification time, language, tone\n\n" +
-            "<i>Commands:</i> /add_birthday, /list, /remove, /settings"},
+            "<b>BirthdayHelper</b> — remember what matters about your people.\\n\\n" +
+            "👥 <b>My people</b> — profiles, interests and gifts\\n" +
+            "🎂 <b>Upcoming</b> — birthday calendar\\n" +
+            "➕ <b>Add</b> — just a name and date\\n" +
+            "📥 <b>Import</b> — CSV or VCF contacts\\n\\n" +
+            "Try: “Add Anna, June 12, loves books”.\\n" +
+            "You can add more details later.\\n\\n" +
+            "<i>Commands:</i> /start, /list, /add_birthday, /import, /settings"},
 
         {(Language.Ru, "ask_name"), "Введите имя именинника:"},
         {(Language.Pl, "ask_name"), "Podaj imię solenizanta:"},
