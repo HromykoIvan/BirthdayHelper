@@ -138,7 +138,23 @@ fi
 
 POOL_NAME="$(gcloud iam workload-identity-pools describe "$WIF_POOL"   --project="$PROJECT_ID"   --location="global"   --format='value(name)')"
 
-PROVIDER_NAME="$(gcloud iam workload-identity-pools providers describe "$WIF_PROVIDER"   --project="$PROJECT_ID"   --location="global"   --workload-identity-pool="$WIF_POOL"   --format='value(name)')"
+PROVIDER_NAME=""
+for attempt in 1 2 3 4 5 6; do
+  PROVIDER_NAME="$(gcloud iam workload-identity-pools providers describe "$WIF_PROVIDER" --project="$PROJECT_ID" --location="global" --workload-identity-pool="$WIF_POOL" --format='value(name)' 2>/dev/null || true)"
+
+  if [[ -n "$PROVIDER_NAME" ]]; then
+    break
+  fi
+
+  echo "Waiting for Workload Identity provider to become available... attempt ${attempt}/6"
+  sleep 10
+done
+
+if [[ -z "$PROVIDER_NAME" ]]; then
+  echo "Workload Identity provider was created but is not readable yet." >&2
+  echo "Re-run this bootstrap script in a minute; it is safe and idempotent." >&2
+  exit 1
+fi
 
 gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA_EMAIL"   --project="$PROJECT_ID"   --role="roles/iam.workloadIdentityUser"   --member="principalSet://iam.googleapis.com/${POOL_NAME}/attribute.repository/${GITHUB_REPO}" >/dev/null
 
