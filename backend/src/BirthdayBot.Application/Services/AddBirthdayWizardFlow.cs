@@ -17,7 +17,7 @@ namespace BirthdayBot.Application.Services;
 
 /// <summary>
 /// Multi-step wizard for adding a birthday:
-/// Name → LastName → Date (calendar) → Relation → Interests → Confirm.
+/// Name → Date → Confirm. Optional relationship/interests can be added later in the person's card.
 /// </summary>
 public sealed class AddBirthdayWizardFlow : IWizardFlow
 {
@@ -189,6 +189,13 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                             replyMarkup: NameKb(editNameLang), cancellationToken: ct);
                         return true;
 
+                    case "add:calendar":
+                        s1.Step = AddWizardStep.Date;
+                        s1.CalendarMessageId = null;
+                        _store.Upsert(s1);
+                        await SendCalendar(chatId, s1, DateTime.UtcNow.Year, DateTime.UtcNow.Month, ct);
+                        return true;
+
                     case "add:editdate":
                         s1.Step = AddWizardStep.Date;
                         s1.CalendarMessageId = null;
@@ -201,6 +208,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                         return true;
 
                     case "add:save" when s1.Name is not null && s1.Date is not null:
+                        MongoDB.Bson.ObjectId savedBirthdayId;
                         try
                         {
                             var user = await _users.GetByTelegramUserIdAsync(s1.UserId, ct);
@@ -241,7 +249,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                                 GreetingLanguage = s1.GreetingLanguage
                             };
 
-                            await _birthdays.CreateAsync(birthday, ct);
+                            savedBirthdayId = await _birthdays.CreateAsync(birthday, ct);
                             _store.Remove(chatId);
                         }
                         catch (Exception ex)
@@ -264,10 +272,33 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                                 FormatSessionDate(s1)),
                             ct, ParseMode.Html);
 
-                        // Show main menu after save
+                        // Open the new person in one tap to add details later.
+                        var nextRows = new List<InlineKeyboardButton[]>
+                        {
+                            new[]
+                            {
+                                InlineKeyboardButton.WithCallbackData(
+                                    savedLang switch
+                                    {
+                                        Language.Ru => "👤 Дополнить карточку",
+                                        Language.Pl => "👤 Uzupełnij profil",
+                                        _ => "👤 Add more details"
+                                    }, $"person:show:{savedBirthdayId}")
+                            }
+                        };
+                        nextRows.Add(new[]
+                        {
+                            InlineKeyboardButton.WithCallbackData(
+                                _i18n.GetText(savedLang, "back_to_menu"), "menu:home")
+                        });
                         await _bot.SendTextMessageAsync(chatId,
-                            _i18n.GetText(savedLang, "wizard_next_action"),
-                            replyMarkup: Keyboards.MainMenuKb(savedLang),
+                            savedLang switch
+                            {
+                                Language.Ru => "Готово! Если захочешь, расскажи об этом человеке побольше.",
+                                Language.Pl => "Gotowe! Możesz dodać więcej informacji później.",
+                                _ => "All set! You can add more about this person whenever you want."
+                            },
+                            replyMarkup: new InlineKeyboardMarkup(nextRows),
                             cancellationToken: ct);
 
                         return true;
@@ -277,8 +308,11 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
             // ── Text-based wizard steps ──
             if (text is not null && _store.TryGet(chatId, out var s))
             {
-                // Global cancel
+                // Global cancel. Slash commands remain available while a draft is open.
                 var lang = await ResolveLanguageAsync(s.UserId, ct);
+                if (text.StartsWith("/", StringComparison.Ordinal) &&
+                    !text.Equals("/cancel", StringComparison.OrdinalIgnoreCase))
+                    return false;
 
                 if (IsCancel(text, lang) || text.Equals("/cancel", StringComparison.OrdinalIgnoreCase))
                 {
@@ -315,17 +349,33 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                             return true;
                         }
 
-                        s.Step = AddWizardStep.LastName;
+                        s.Step = AddWizardStep.Date;
+                        s.CalendarMessageId = null;
                         _store.Upsert(s);
-
                         await _bot.SendTextMessageAsync(chatId,
-                            string.Format(_i18n.GetText(lang, "wizard_name_saved"),
-                                Formatting.Html(name),
-                                _i18n.GetText(lang, "ask_lastname")),
+                            lang switch
+                            {
+                                Language.Ru => $"Запомнил <b>{Formatting.Html(name)}</b>. Когда день рождения? Напиши <b>12.06</b> или <b>12.06.1990</b>. Год можно не указывать.",
+                                Language.Pl => $"Zapamiętałem <b>{Formatting.Html(name)}</b>. Kiedy są urodziny? Napisz <b>12.06</b> lub <b>12.06.1990</b>. Rok jest opcjonalny.",
+                                _ => $"Got it: <b>{Formatting.Html(name)}</b>. When is the birthday? Type <b>12.06</b> or <b>12.06.1990</b>. Year is optional."
+                            },
                             parseMode: ParseMode.Html,
-                            replyMarkup: Keyboards.SkipCancelKb(lang),
+                            replyMarkup: new ReplyKeyboardRemove(),
                             cancellationToken: ct);
-
+                        await _bot.SendTextMessageAsync(chatId,
+                            lang switch
+                            {
+                                Language.Ru => "Или выбери дату в календаре:",
+                                Language.Pl => "Możesz też użyć kalendarza:",
+                                _ => "Or pick a date from the calendar:"
+                            },
+                            replyMarkup: new InlineKeyboardMarkup(new[]
+                            {
+                                new[] { InlineKeyboardButton.WithCallbackData(
+                                    lang switch { Language.Ru => "📅 Календарь", Language.Pl => "📅 Kalendarz", _ => "📅 Calendar" },
+                                    "add:calendar") }
+                            }),
+                            cancellationToken: ct);
                         return true;
 
                     // ② Last Name (optional)
@@ -378,10 +428,10 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
 
                         s.Date = date;
                         s.BirthYearKnown = yearKnown;
-                        s.Step = AddWizardStep.Relation;
+                        s.Step = AddWizardStep.Confirm;
                         _store.Upsert(s);
 
-                        await AskRelation(chatId, s.UserId, ct);
+                        await SendConfirmation(chatId, s, ct);
                         return true;
 
                     // ④ Relation (optional)
@@ -513,9 +563,10 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                 var dateStr = data["cal:day:".Length..];
                 if (DateOnly.TryParse(dateStr, out var date))
                 {
-                    s.Date = date;
-                    s.BirthYearKnown = true;
-                    s.Step = AddWizardStep.Relation;
+                    // Calendar selection specifies day/month only: never invent a birth year.
+                    s.Date = new DateOnly(2000, date.Month, date.Day);
+                    s.BirthYearKnown = false;
+                    s.Step = AddWizardStep.Confirm;
                     _store.Upsert(s);
 
                     // Update calendar message to show selected date
@@ -523,11 +574,11 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                     {
                         var lang = await ResolveLanguageAsync(s.UserId, ct);
                         await SafeEditCalendarAsync(chatId, s.CalendarMessageId.Value,
-                            string.Format(_i18n.GetText(lang, "wizard_selected_date"), $"{date:dd.MM.yyyy}"), null, ct);
+                            string.Format(_i18n.GetText(lang, "wizard_selected_date"), $"{date:dd.MM}"), null, ct);
                     }
 
                     await SafeAnswerCq(cq.Id, ct: ct);
-                    await AskRelation(chatId, s.UserId, ct);
+                    await SendConfirmation(chatId, s, ct);
                     return;
                 }
             }

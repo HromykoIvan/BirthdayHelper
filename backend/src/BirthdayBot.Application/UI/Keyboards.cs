@@ -45,28 +45,26 @@ public static class Keyboards
 
     public static InlineKeyboardMarkup MainMenuKb(Language lang)
     {
-        return new(new[]
+        string T(string ru, string pl, string en) =>
+            lang switch { Language.Ru => ru, Language.Pl => pl, _ => en };
+
+        return new InlineKeyboardMarkup(new[]
         {
             new[]
             {
-                InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_add"), "menu:add"),
-                InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_list"), "menu:list"),
+                InlineKeyboardButton.WithCallbackData(T("👥 Мои люди", "👥 Moi bliscy", "👥 My people"), "menu:people"),
+                InlineKeyboardButton.WithCallbackData(T("🎂 Ближайшие", "🎂 Najbliższe", "🎂 Upcoming"), "menu:list")
             },
             new[]
             {
-                InlineKeyboardButton.WithCallbackData(
-                    lang switch
-                    {
-                        Language.Ru => "📥 Импорт контактов",
-                        Language.Pl => "📥 Import kontaktów",
-                        _ => "📥 Import contacts"
-                    }, "menu:import"),
+                InlineKeyboardButton.WithCallbackData(T("➕ Добавить", "➕ Dodaj", "➕ Add"), "menu:add"),
+                InlineKeyboardButton.WithCallbackData(T("📥 Импорт", "📥 Import", "📥 Import"), "menu:import")
             },
             new[]
             {
                 InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_settings"), "menu:settings"),
-                InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_help"), "menu:help"),
-            },
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_help"), "menu:help")
+            }
         });
     }
 
