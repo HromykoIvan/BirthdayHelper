@@ -96,8 +96,22 @@ jobs:
       - name: Verify Cloud Run health
         run: |
           SERVICE_URL="$(gcloud run services describe "${CLOUD_RUN_SERVICE}" --project="${GCP_PROJECT_ID}" --region="${GCP_REGION}" --format='value(status.url)')"
+          LATEST_READY_REVISION="$(gcloud run services describe "${CLOUD_RUN_SERVICE}" --project="${GCP_PROJECT_ID}" --region="${GCP_REGION}" --format='value(status.latestReadyRevisionName)')"
+          TRAFFIC="$(gcloud run services describe "${CLOUD_RUN_SERVICE}" --project="${GCP_PROJECT_ID}" --region="${GCP_REGION}" --format='value(status.traffic[0].percent)')"
+
           echo "Cloud Run URL: ${SERVICE_URL}"
-          curl --fail --silent --show-error --retry 20 --retry-delay 3 --retry-all-errors "${SERVICE_URL}/healthz"
+          echo "Latest ready revision: ${LATEST_READY_REVISION}"
+          echo "Traffic to first target: ${TRAFFIC}%"
+          echo "IAM policy:"
+          gcloud run services get-iam-policy "${CLOUD_RUN_SERVICE}" --project="${GCP_PROJECT_ID}" --region="${GCP_REGION}" || true
+
+          echo "Root response:"
+          curl --silent --show-error --include "${SERVICE_URL}/" || true
+
+          echo "Health response:"
+          curl --silent --show-error --include "${SERVICE_URL}/healthz" || true
+
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --retry-all-errors "${SERVICE_URL}/healthz"
 
       - name: Create or update reminder scheduler
         run: |
