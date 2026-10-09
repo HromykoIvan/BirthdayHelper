@@ -44,6 +44,7 @@ public sealed class UpdateHandler : IUpdateHandler
     private readonly TelegramBirthdayImportService _import;
     private readonly VkImportService _vkImport;
     private readonly PersonProfileService _profiles;
+    private readonly IConversationSessionStore _addSessions;
     private readonly IDateTimeZoneProvider _tzdb;
     private readonly IIntentRouter _intentRouter;
     private readonly IAiGreetingEnhancer _enhancer;
@@ -65,6 +66,7 @@ public sealed class UpdateHandler : IUpdateHandler
         TelegramBirthdayImportService import,
         VkImportService vkImport,
         PersonProfileService profiles,
+        IConversationSessionStore addSessions,
         IIntentRouter intentRouter,
         IAiGreetingEnhancer enhancer,
         IGreetingGenerator greetings,
@@ -85,6 +87,7 @@ public sealed class UpdateHandler : IUpdateHandler
         _import = import;
         _vkImport = vkImport;
         _profiles = profiles;
+        _addSessions = addSessions;
         _intentRouter = intentRouter;
         _enhancer = enhancer;
         _greetings = greetings;
@@ -114,6 +117,7 @@ public sealed class UpdateHandler : IUpdateHandler
                 if (data.StartsWith("person:", StringComparison.Ordinal))
                 {
                     var user = await EnsureUser(update.CallbackQuery!.From, ct);
+                    _addSessions.Remove(update.CallbackQuery.Message!.Chat.Id);
                     await _profiles.HandleCallbackAsync(user, update.CallbackQuery, ct);
                     return;
                 }
@@ -242,6 +246,14 @@ public sealed class UpdateHandler : IUpdateHandler
 
         var user = await EnsureUser(msg.From!, ct);
 
+        // Slash commands leave the old dialog; do not silently edit another person.
+        if (text.StartsWith("/", StringComparison.Ordinal) &&
+            !text.Equals("/cancel", StringComparison.OrdinalIgnoreCase))
+        {
+            _addSessions.Remove(chatId);
+            await _profiles.CancelPendingAsync(chatId, msg.From!.Id, ct);
+        }
+
         if (await _profiles.TryHandleTextAsync(user, msg, ct))
             return;
 
@@ -354,6 +366,8 @@ public sealed class UpdateHandler : IUpdateHandler
         var cq = update.CallbackQuery!;
         var chatId = cq.Message!.Chat.Id;
         var user = await EnsureUser(cq.From, ct);
+        _addSessions.Remove(chatId);
+        await _profiles.CancelPendingAsync(chatId, cq.From.Id, ct);
 
         switch (data)
         {
