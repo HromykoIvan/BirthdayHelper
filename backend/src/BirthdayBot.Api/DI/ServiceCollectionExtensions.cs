@@ -84,7 +84,13 @@ public static class ServiceCollectionExtensions
         }
 
         services.AddHostedService<MongoIndexInitializerHostedService>();
-        services.AddHostedService<ReminderHostedService>();
+
+        services.AddSingleton<IReminderService, ReminderService>();
+        var reminderOptions = cfg.GetSection("Reminder").Get<ReminderOptions>() ?? new ReminderOptions();
+        if (reminderOptions.RunAsHostedService)
+        {
+            services.AddHostedService<ReminderHostedService>();
+        }
 
         services.AddHealthChecks()
             .AddMongoDb(sp => sp.GetRequiredService<IOptions<MongoOptions>>().Value.ConnectionString, name: "mongodb");
