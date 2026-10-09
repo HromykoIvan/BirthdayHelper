@@ -993,8 +993,8 @@ public sealed class UpdateHandler : IUpdateHandler
             {
                 var dayStr = $"{i.NextDate.Day:D2}.{i.NextDate.Month:D2}";
                 var relation = string.IsNullOrWhiteSpace(i.Relation) ? "" : $" · {Formatting.Html(i.Relation)}";
-                sb.AppendLine($"🎂 <b>{Formatting.Html(i.Name)}</b> — {dayStr}, " +
-                              $"{i.Age} {YearWord(user.Lang, i.Age)}{relation}");
+                var ageText = i.Age.HasValue ? $", {i.Age.Value} {YearWord(user.Lang, i.Age.Value)}" : "";
+                sb.AppendLine($"🎂 <b>{Formatting.Html(i.Name)}</b> — {dayStr}{ageText}{relation}");
             }
         }
 
@@ -1040,13 +1040,17 @@ public sealed class UpdateHandler : IUpdateHandler
         {
             var relation = string.IsNullOrWhiteSpace(item.Birthday.Relation) ? "" : $" · {Formatting.Html(item.Birthday.Relation)}";
             var interests = string.IsNullOrWhiteSpace(item.Birthday.Interests) ? "" : $"\n   💡 {Formatting.Html(item.Birthday.Interests)}";
-            var next = string.Format(_i18n.GetText(user.Lang, "next_occurrence"),
-                $"{item.NextDate.Day:D2}.{item.NextDate.Month:D2}",
-                item.Age,
-                YearWord(user.Lang, item.Age));
+            var nextDate = $"{item.NextDate.Day:D2}.{item.NextDate.Month:D2}";
+            var next = item.Age.HasValue
+                ? string.Format(_i18n.GetText(user.Lang, "next_occurrence"),
+                    nextDate,
+                    item.Age.Value,
+                    YearWord(user.Lang, item.Age.Value))
+                : nextDate;
+            var birthDate = FormatBirthdayDate(item.Birthday);
 
             sb.AppendLine($"🎂 <b>{Formatting.Html(item.Birthday.FullName)}</b>");
-            sb.AppendLine($"   📅 {item.Birthday.Date:dd.MM.yyyy} → {next}{relation}{interests}");
+            sb.AppendLine($"   📅 {birthDate} → {next}{relation}{interests}");
         }
 
         await SendOrEditAsync(chatId, messageId, sb.ToString(), ParseMode.Html,
@@ -1091,7 +1095,7 @@ public sealed class UpdateHandler : IUpdateHandler
             var item = pageRows[i];
             var number = first + i;
             var relation = string.IsNullOrWhiteSpace(item.Birthday.Relation) ? "" : $" · {Formatting.Html(item.Birthday.Relation)}";
-            sb.AppendLine($"{number}. 🎂 <b>{Formatting.Html(item.Birthday.FullName)}</b> — {item.Birthday.Date:dd.MM.yyyy}{relation}");
+            sb.AppendLine($"{number}. 🎂 <b>{Formatting.Html(item.Birthday.FullName)}</b> — {FormatBirthdayDate(item.Birthday)}{relation}");
         }
 
         await SendOrEditAsync(chatId, messageId, sb.ToString(), ParseMode.Html,
@@ -1119,7 +1123,7 @@ public sealed class UpdateHandler : IUpdateHandler
     }
 
     private record struct UpcomingRow(string Name, DateOnly BirthDate, LocalDate NextDate, int? Age, string? Relation);
-    private record struct BirthdayListRow(Birthday Birthday, LocalDate NextDate, int Age);
+    private record struct BirthdayListRow(Birthday Birthday, LocalDate NextDate, int? Age);
 
     private List<BirthdayListRow> BuildBirthdayRows(IEnumerable<Birthday> birthdays, LocalDate today)
     {
@@ -1133,6 +1137,11 @@ public sealed class UpdateHandler : IUpdateHandler
             .ThenBy(x => x.Birthday.FullName, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+
+    private static string FormatBirthdayDate(Birthday birthday) =>
+        birthday.HasKnownBirthYear
+            ? $"{birthday.Date:dd.MM.yyyy}"
+            : $"{birthday.Date:dd.MM}";
 
     private InlineKeyboardMarkup BuildAllEntriesKeyboard(Language lang, int page, int total)
     {
