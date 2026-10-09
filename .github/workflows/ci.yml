@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore BirthdayBot.sln --configfile nuget.config
+
+      - name: Build
+        run: dotnet build BirthdayBot.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test BirthdayBot.sln -c Release --no-build --no-restore
+
+      - name: Validate production Docker image
+        run: docker build --platform linux/amd64 -f Dockerfile -t birthday-helper:ci .

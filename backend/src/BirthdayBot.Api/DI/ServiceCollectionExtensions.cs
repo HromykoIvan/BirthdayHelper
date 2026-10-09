@@ -20,6 +20,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddBotServices(this IServiceCollection services, IConfiguration cfg)
     {
         services.Configure<BotOptions>(cfg.GetSection("Bot"));
+        services.Configure<SchedulerOptions>(cfg.GetSection("Scheduler"));
         services.Configure<MongoOptions>(cfg.GetSection("Mongo"));
         services.Configure<ReminderOptions>(cfg.GetSection("Reminder"));
         services.Configure<MetricsOptions>(cfg.GetSection("Metrics"));
@@ -84,7 +85,13 @@ public static class ServiceCollectionExtensions
         }
 
         services.AddHostedService<MongoIndexInitializerHostedService>();
-        services.AddHostedService<ReminderHostedService>();
+
+        services.AddSingleton<IReminderService, ReminderService>();
+        var reminderOptions = cfg.GetSection("Reminder").Get<ReminderOptions>() ?? new ReminderOptions();
+        if (reminderOptions.RunAsHostedService)
+        {
+            services.AddHostedService<ReminderHostedService>();
+        }
 
         services.AddHealthChecks()
             .AddMongoDb(sp => sp.GetRequiredService<IOptions<MongoOptions>>().Value.ConnectionString, name: "mongodb");
