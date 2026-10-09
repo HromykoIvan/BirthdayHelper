@@ -1,6 +1,7 @@
 using BirthdayBot.Application.Interfaces;
 using BirthdayBot.Application.Utils;
 using BirthdayBot.Domain.Entities;
+using PersonOwner = BirthdayBot.Domain.Entities.User;
 using BirthdayBot.Domain.Enums;
 using BirthdayBot.Infrastructure.Mongo;
 using MongoDB.Bson;
@@ -35,7 +36,7 @@ public sealed class PersonProfileService
     private static string L(Language lang, string ru, string pl, string en) =>
         lang switch { Language.Ru => ru, Language.Pl => pl, _ => en };
 
-    public async Task ShowPeopleAsync(User user, long chatId, int page, int? messageId, CancellationToken ct)
+    public async Task ShowPeopleAsync(PersonOwner user, long chatId, int page, int? messageId, CancellationToken ct)
     {
         var entries = (await _birthdays.ListByUserAsync(user.Id, ct))
             .OrderBy(x => x.FullName, StringComparer.CurrentCultureIgnoreCase)
@@ -89,7 +90,7 @@ public sealed class PersonProfileService
         await SendOrEditAsync(chatId, messageId, text, new InlineKeyboardMarkup(rows), ct);
     }
 
-    public async Task HandleCallbackAsync(User user, CallbackQuery callback, CancellationToken ct)
+    public async Task HandleCallbackAsync(PersonOwner user, CallbackQuery callback, CancellationToken ct)
     {
         var data = callback.Data ?? "";
         var chatId = callback.Message?.Chat.Id ?? callback.From.Id;
@@ -175,7 +176,7 @@ public sealed class PersonProfileService
         }
     }
 
-    public async Task<bool> TryHandleTextAsync(User user, Message message, CancellationToken ct)
+    public async Task<bool> TryHandleTextAsync(PersonOwner user, Message message, CancellationToken ct)
     {
         if (message.From is null || string.IsNullOrWhiteSpace(message.Text))
             return false;
@@ -244,7 +245,7 @@ public sealed class PersonProfileService
         return true;
     }
 
-    private async Task ShowPersonAsync(User user, Birthday person, long chatId, int? messageId, CancellationToken ct)
+    private async Task ShowPersonAsync(PersonOwner user, Birthday person, long chatId, int? messageId, CancellationToken ct)
     {
         var lang = user.Lang;
         var birthday = person.HasKnownBirthYear
