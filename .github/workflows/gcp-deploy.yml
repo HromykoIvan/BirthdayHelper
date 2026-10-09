@@ -81,6 +81,7 @@ jobs:
             Mongo__ConnectionString=birthday-helper-mongodb-uri:latest
             Scheduler__Secret=birthday-helper-scheduler-secret:latest
           secrets_update_strategy: overwrite
+          wait: true
           flags: >-
             --allow-unauthenticated
             --service-account=${{ env.RUNTIME_SERVICE_ACCOUNT }}
@@ -93,14 +94,14 @@ jobs:
             --port=8080
 
       - name: Verify Cloud Run health
-        env:
-          SERVICE_URL: ${{ steps.deploy.outputs.url }}
-        run: curl --fail --silent --show-error --retry 10 --retry-delay 3 --retry-all-errors "${SERVICE_URL}/healthz"
+        run: |
+          SERVICE_URL="$(gcloud run services describe "${CLOUD_RUN_SERVICE}" --project="${GCP_PROJECT_ID}" --region="${GCP_REGION}" --format='value(status.url)')"
+          echo "Cloud Run URL: ${SERVICE_URL}"
+          curl --fail --silent --show-error --retry 20 --retry-delay 3 --retry-all-errors "${SERVICE_URL}/healthz"
 
       - name: Create or update reminder scheduler
-        env:
-          SERVICE_URL: ${{ steps.deploy.outputs.url }}
         run: |
+          SERVICE_URL="$(gcloud run services describe "${CLOUD_RUN_SERVICE}" --project="${GCP_PROJECT_ID}" --region="${GCP_REGION}" --format='value(status.url)')"
           SCHEDULER_SECRET="$(gcloud secrets versions access latest --project="${GCP_PROJECT_ID}" --secret="birthday-helper-scheduler-secret")"
 
           if gcloud scheduler jobs describe "${SCHEDULER_JOB}" --project="${GCP_PROJECT_ID}" --location="${GCP_REGION}" >/dev/null 2>&1; then
@@ -110,9 +111,8 @@ jobs:
           fi
 
       - name: Configure Telegram webhook
-        env:
-          SERVICE_URL: ${{ steps.deploy.outputs.url }}
         run: |
+          SERVICE_URL="$(gcloud run services describe "${CLOUD_RUN_SERVICE}" --project="${GCP_PROJECT_ID}" --region="${GCP_REGION}" --format='value(status.url)')"
           TELEGRAM_TOKEN="$(gcloud secrets versions access latest --project="${GCP_PROJECT_ID}" --secret="birthday-helper-telegram-token")"
           TELEGRAM_WEBHOOK_SECRET="$(gcloud secrets versions access latest --project="${GCP_PROJECT_ID}" --secret="birthday-helper-telegram-webhook-secret")"
 
@@ -121,9 +121,8 @@ jobs:
           echo "${RESPONSE}" | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r.get("ok") is True, r; print(r.get("description", "Webhook configured"))'
 
       - name: Deployment summary
-        env:
-          SERVICE_URL: ${{ steps.deploy.outputs.url }}
         run: |
+          SERVICE_URL="$(gcloud run services describe "${CLOUD_RUN_SERVICE}" --project="${GCP_PROJECT_ID}" --region="${GCP_REGION}" --format='value(status.url)')"
           echo "Cloud Run URL: ${SERVICE_URL}"
           echo "Health: ${SERVICE_URL}/healthz"
           echo "Telegram webhook: ${SERVICE_URL}/telegram/webhook"
