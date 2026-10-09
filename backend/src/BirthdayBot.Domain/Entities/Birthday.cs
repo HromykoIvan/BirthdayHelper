@@ -16,10 +16,20 @@ public sealed class Birthday
     public string? LastName { get; set; }               // last name (optional, for LLM greetings)
     public DateOnly Date { get; set; }
 
+    /// <summary>
+    /// False when only day/month are known. Existing records without this field are treated as known-year records.
+    /// For unknown-year records Date.Year is a storage sentinel and must not be used to calculate age.
+    /// </summary>
+    public bool? BirthYearKnown { get; set; }
+
+    [BsonIgnore]
+    public bool HasKnownBirthYear => BirthYearKnown ?? true;
+
     // Optional metadata for LLM greeting generation
     public string? TimeZoneId { get; set; }     // IANA timezone
     public string? Relation { get; set; }       // "Family/Friend/..."
     public string? Interests { get; set; }      // hobbies/interests for LLM context
+    public string? Profession { get; set; }     // optional profession/role
     public string? Notes { get; set; }          // free-form notes
     public int?   ReminderDaysBefore { get; set; }
     
