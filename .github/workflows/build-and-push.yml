@@ -1,15 +1,6 @@
-name: Build & Push (ARM64) to ECR
+name: LEGACY AWS - Build & Push (manual only)
 
 on:
-  push:
-    branches: [ master ]
-    paths:
-      - "backend/**"
-      - "Dockerfile"
-      - ".github/workflows/build-and-push.yml"
-      - "ops/**"
-      - "deploy/ec2/**"
-      - "docker-compose.yml"
   workflow_dispatch:
 
 permissions:
