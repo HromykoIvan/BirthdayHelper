@@ -74,12 +74,17 @@ jobs:
             Reminder__RunAsHostedService=false
             LocalAi__Enable=false
             Metrics__Enable=false
+            OpenAi__Enable=true
+            OpenAi__IntentModel=gpt-6-luna
+            OpenAi__GreetingModel=gpt-6-luna
+            OpenAi__MaxOutputTokens=900
           env_vars_update_strategy: overwrite
           secrets: |-
             Bot__Token=birthday-helper-telegram-token:latest
             Bot__WebhookSecretToken=birthday-helper-telegram-webhook-secret:latest
             Mongo__ConnectionString=birthday-helper-mongodb-uri:latest
             Scheduler__Secret=birthday-helper-scheduler-secret:latest
+            OpenAi__ApiKey=birthday-helper-openai-api-key:latest
           secrets_update_strategy: overwrite
           wait: true
           flags: >-
@@ -112,6 +117,9 @@ jobs:
           curl --silent --show-error --include "${SERVICE_URL}/health" || true
 
           curl --fail --silent --show-error --retry 3 --retry-delay 2 --retry-all-errors "${SERVICE_URL}/health"
+
+          echo "Readiness response (includes MongoDB):"
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --retry-all-errors "${SERVICE_URL}/health/ready"
 
       - name: Create or update reminder scheduler
         run: |
