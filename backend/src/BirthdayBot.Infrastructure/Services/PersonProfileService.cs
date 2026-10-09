@@ -251,13 +251,33 @@ public sealed class PersonProfileService
         var birthday = person.HasKnownBirthYear
             ? person.Date.ToString("dd.MM.yyyy")
             : person.Date.ToString("dd.MM");
-        var unset = L(lang, "пока не указано", "jeszcze nie podano", "not set yet");
-        string V(string? s) => Formatting.Html(string.IsNullOrWhiteSpace(s) ? unset : Trim(s, 1400));
+        // Show what is known, not a long questionnaire full of empty fields.
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine($"👤 <b>{Formatting.Html(person.FullName)}</b>");
+        builder.AppendLine($"🎂 {L(lang, "День рождения", "Urodziny", "Birthday")}: {birthday}");
+        var facts = 0;
+        void AddFact(string? value, string label)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return;
+            builder.AppendLine($"{label}: {Formatting.Html(Trim(value, 1200))}");
+            facts++;
+        }
 
-        var text = L(lang,
-            $"👤 <b>{Formatting.Html(person.FullName)}</b>\n\n🎂 День рождения: {birthday}\n👥 Кто это: {V(person.Relation)}\n💡 Интересы: {V(person.Interests)}\n💼 Занятие: {V(person.Profession)}\n🎁 Идеи подарков: {V(person.GiftIdeas)}\n📝 Заметки: {V(person.Notes)}\n\n<i>Ты можешь дополнять карточку в любое время.</i>",
-            $"👤 <b>{Formatting.Html(person.FullName)}</b>\n\n🎂 Urodziny: {birthday}\n👥 Relacja: {V(person.Relation)}\n💡 Zainteresowania: {V(person.Interests)}\n💼 Zawód: {V(person.Profession)}\n🎁 Pomysły na prezent: {V(person.GiftIdeas)}\n📝 Notatki: {V(person.Notes)}\n\n<i>Możesz uzupełnić profil w dowolnym momencie.</i>",
-            $"👤 <b>{Formatting.Html(person.FullName)}</b>\n\n🎂 Birthday: {birthday}\n👥 Relationship: {V(person.Relation)}\n💡 Interests: {V(person.Interests)}\n💼 Job: {V(person.Profession)}\n🎁 Gift ideas: {V(person.GiftIdeas)}\n📝 Notes: {V(person.Notes)}\n\n<i>You can add more details at any time.</i>");
+        AddFact(person.Relation, L(lang, "👥 Кто это", "👥 Relacja", "👥 Relationship"));
+        AddFact(person.Interests, L(lang, "💡 Интересы", "💡 Zainteresowania", "💡 Interests"));
+        AddFact(person.Profession, L(lang, "💼 Занятие", "💼 Zawód", "💼 Job"));
+        AddFact(person.GiftIdeas, L(lang, "🎁 Идеи подарков", "🎁 Pomysły na prezent", "🎁 Gift ideas"));
+        AddFact(person.Notes, L(lang, "📝 Заметки", "📝 Notatki", "📝 Notes"));
+        builder.AppendLine();
+        builder.AppendLine(facts == 0
+            ? L(lang, "Пока помню только дату. Можно добавить одну деталь — это необязательно.",
+                      "Na razie pamiętam datę. Możesz dodać szczegóły później.",
+                      "I only know the birthday so far. Feel free to add details later.")
+            : L(lang, "Можешь дополнить карточку в любое время.",
+                      "Możesz uzupełnić profil w dowolnej chwili.",
+                      "You can add more details at any time."));
+        var text = builder.ToString();
 
         InlineKeyboardButton Edit(string label, string field) =>
             InlineKeyboardButton.WithCallbackData(label, $"person:edit:{field}:{person.Id}");
