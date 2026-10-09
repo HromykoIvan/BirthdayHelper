@@ -45,8 +45,10 @@ public class DeliveryLogRepository : IDeliveryLogRepository
         await _ctx.DeliveryLogs.UpdateOneAsync(x => x.Id == id, update, cancellationToken: ct);
     }
 
-    public Task DeleteAsync(ObjectId id, CancellationToken ct = default) =>
-        _ctx.DeliveryLogs.DeleteOneAsync(x => x.Id == id, ct);
+    public async Task DeleteAsync(ObjectId id, CancellationToken ct = default)
+    {
+        await _ctx.DeliveryLogs.DeleteOneAsync(x => x.Id == id, ct);
+    }
 
     public async Task<List<DeliveryLog>> ListForUserAsync(ObjectId userId, int take = 50, CancellationToken ct = default)
     {
