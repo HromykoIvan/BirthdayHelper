@@ -37,6 +37,7 @@ var metricsOptions = app.Services.GetRequiredService<IOptions<MetricsOptions>>()
 if (metricsOptions.Enable) app.MapPrometheusScrapingEndpoint(metricsOptions.ScrapeEndpoint);
 
 app.MapTelegramEndpoints();
+app.MapVkImportEndpoints();
 app.MapReminderEndpoints();
 
 var aiEvalOptions = app.Services.GetRequiredService<IOptions<AiEvalOptions>>().Value;
