@@ -2,10 +2,6 @@ name: LEGACY AWS - CDK Deploy (manual only)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ master ]
-    paths:
-      - "deploy/cdk/**"
 
 permissions:
   id-token: write
