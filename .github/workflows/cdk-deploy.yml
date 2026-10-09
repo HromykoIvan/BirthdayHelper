@@ -1,4 +1,4 @@
-name: CDK Deploy (EC2)
+name: LEGACY AWS - CDK Deploy (manual only)
 
 on:
   workflow_dispatch:
