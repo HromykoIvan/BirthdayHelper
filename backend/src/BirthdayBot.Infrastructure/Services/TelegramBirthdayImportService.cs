@@ -183,18 +183,18 @@ public sealed class TelegramBirthdayImportService
 
             await SendPreviewAsync(user, chatId, session, 0, messageId: null, ct);
         }
+        catch (DecoderFallbackException)
+        {
+            await _bot.SendTextMessageAsync(chatId,
+                "The file must be UTF-8. Please export contacts as UTF-8 vCard or CSV.",
+                cancellationToken: ct);
+        }
         catch (ArgumentException ex)
         {
             // Only expose safe parser validation errors; don't include file contents.
             _logger.LogInformation("Contact import rejected: {Reason}", ex.Message);
             await _bot.SendTextMessageAsync(chatId,
                 $"Couldn't read this export: {ex.Message}",
-                cancellationToken: ct);
-        }
-        catch (DecoderFallbackException)
-        {
-            await _bot.SendTextMessageAsync(chatId,
-                "The file must be UTF-8. Please export contacts as UTF-8 vCard or CSV.",
                 cancellationToken: ct);
         }
         catch (Exception ex)
@@ -310,7 +310,7 @@ public sealed class TelegramBirthdayImportService
     private async Task CommitAsync(
         User user, long chatId, int messageId, CancellationToken ct)
     {
-        var locked = await _sessions.FindOneAndUpdateAsync(
+        var locked = await _sessions.FindOneAndUpdateAsync<BirthdayImportSessionDocument>(
             x => x.ChatId == chatId && x.UserId == user.Id &&
                  x.Status == "Preview" && x.ExpiresAtUtc > DateTime.UtcNow,
             Builders<BirthdayImportSessionDocument>.Update.Set(x => x.Status, "Committing"),
