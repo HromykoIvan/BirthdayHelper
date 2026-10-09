@@ -54,6 +54,16 @@ public static class Keyboards
             },
             new[]
             {
+                InlineKeyboardButton.WithCallbackData(
+                    lang switch
+                    {
+                        Language.Ru => "📥 Импорт контактов",
+                        Language.Pl => "📥 Import kontaktów",
+                        _ => "📥 Import contacts"
+                    }, "menu:import"),
+            },
+            new[]
+            {
                 InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_settings"), "menu:settings"),
                 InlineKeyboardButton.WithCallbackData(GetText(lang, "menu_help"), "menu:help"),
             },
