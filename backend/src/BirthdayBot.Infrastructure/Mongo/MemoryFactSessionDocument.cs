@@ -15,6 +15,7 @@ public sealed class MemoryFactSessionDocument
     public ObjectId OwnerId { get; set; }
     public List<ObjectId> CandidateIds { get; set; } = [];
     public ObjectId? SelectedPersonId { get; set; }
+    public string Token { get; set; } = "";
     public string Field { get; set; } = "";
     public string Value { get; set; } = "";
     public DateTime ExpiresAtUtc { get; set; }
