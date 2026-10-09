@@ -25,6 +25,8 @@ public class MongoContext
         Database.GetCollection<ConversationSessionDocument>("conversation_sessions");
     public IMongoCollection<AiFeedbackSessionDocument> AiFeedbackSessions =>
         Database.GetCollection<AiFeedbackSessionDocument>("ai_feedback_sessions");
+    public IMongoCollection<BirthdayImportSessionDocument> ImportSessions =>
+        Database.GetCollection<BirthdayImportSessionDocument>("birthday_import_sessions");
 
     public MongoContext(IOptions<MongoOptions> options, ILogger<MongoContext> logger)
     {
@@ -134,6 +136,11 @@ public class MongoContext
                     ExpireAfter = TimeSpan.Zero
                 });
             await AiFeedbackSessions.Indexes.CreateOneAsync(feedbackTtlIdx, cancellationToken: ct);
+
+            var importSessionTtl = new CreateIndexModel<BirthdayImportSessionDocument>(
+                Builders<BirthdayImportSessionDocument>.IndexKeys.Ascending(x => x.ExpiresAtUtc),
+                new CreateIndexOptions { Name = "ttl_birthday_import_sessions", ExpireAfter = TimeSpan.Zero });
+            await ImportSessions.Indexes.CreateOneAsync(importSessionTtl, cancellationToken: ct);
 
             _indexesEnsured = true;
             _logger.LogInformation("MongoDB indexes are ensured.");
