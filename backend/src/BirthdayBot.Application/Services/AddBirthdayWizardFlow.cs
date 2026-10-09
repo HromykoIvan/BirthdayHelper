@@ -563,8 +563,9 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                 var dateStr = data["cal:day:".Length..];
                 if (DateOnly.TryParse(dateStr, out var date))
                 {
-                    s.Date = date;
-                    s.BirthYearKnown = true;
+                    // Calendar selection specifies day/month only: never invent a birth year.
+                    s.Date = new DateOnly(2000, date.Month, date.Day);
+                    s.BirthYearKnown = false;
                     s.Step = AddWizardStep.Confirm;
                     _store.Upsert(s);
 
@@ -573,7 +574,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                     {
                         var lang = await ResolveLanguageAsync(s.UserId, ct);
                         await SafeEditCalendarAsync(chatId, s.CalendarMessageId.Value,
-                            string.Format(_i18n.GetText(lang, "wizard_selected_date"), $"{date:dd.MM.yyyy}"), null, ct);
+                            string.Format(_i18n.GetText(lang, "wizard_selected_date"), $"{date:dd.MM}"), null, ct);
                     }
 
                     await SafeAnswerCq(cq.Id, ct: ct);
