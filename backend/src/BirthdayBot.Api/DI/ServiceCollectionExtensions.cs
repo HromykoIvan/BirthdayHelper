@@ -20,6 +20,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddBotServices(this IServiceCollection services, IConfiguration cfg)
     {
         services.Configure<BotOptions>(cfg.GetSection("Bot"));
+        services.Configure<SchedulerOptions>(cfg.GetSection("Scheduler"));
         services.Configure<MongoOptions>(cfg.GetSection("Mongo"));
         services.Configure<ReminderOptions>(cfg.GetSection("Reminder"));
         services.Configure<MetricsOptions>(cfg.GetSection("Metrics"));
