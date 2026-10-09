@@ -28,7 +28,7 @@ var app = builder.Build();
 
 // health
 app.MapHealthChecks("/health/live");
-app.MapGet("/healthz", () => Results.Ok("ok"));
+app.MapGet("/health", () => Results.Ok("ok"));
 app.MapHealthChecks("/health/startup");
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = _ => true });
 
