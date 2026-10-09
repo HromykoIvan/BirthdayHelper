@@ -75,7 +75,10 @@ public sealed class ReminderService : IReminderService
                 var list = await _birthdays.ListByUserAsync(user.Id, ct);
                 foreach (var birthday in list)
                 {
-                    var (next, age) = BirthdayBot.Domain.Utils.DateHelpers.NextBirthday(todayLocal, birthday.Date);
+                    var (next, age) = BirthdayBot.Domain.Utils.DateHelpers.NextBirthdayOptionalAge(
+                        todayLocal,
+                        birthday.Date,
+                        birthday.HasKnownBirthYear);
                     var isToday = next == todayLocal;
                     var isTomorrow = next == todayLocal.PlusDays(1);
 
@@ -88,7 +91,8 @@ public sealed class ReminderService : IReminderService
                         ? user.Lang == Language.Pl ? "DZIŚ" : user.Lang == Language.Ru ? "СЕГОДНЯ" : "TODAY"
                         : user.Lang == Language.Pl ? "JUTRO" : user.Lang == Language.Ru ? "ЗАВТРА" : "TOMORROW";
 
-                    var message = $"{when}: {birthday.Name} — {next:yyyy-MM-dd} ({age})";
+                    var ageSuffix = age.HasValue ? $" ({age.Value})" : "";
+                    var message = $"{when}: {birthday.FullName} — {next:yyyy-MM-dd}{ageSuffix}";
                     InlineKeyboardMarkup? replyMarkup = null;
 
                     if (user.AutoGenerateGreetings)
