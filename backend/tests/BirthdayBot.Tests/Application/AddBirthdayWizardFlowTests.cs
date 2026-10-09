@@ -105,7 +105,7 @@ public class AddBirthdayWizardFlowTests
     // ── Name step — valid name advances to LastName ───────────────────────────
 
     [Fact]
-    public async Task NameStep_ValidName_Advances_To_LastName()
+    public async Task NameStep_ValidName_Advances_To_Date()
     {
         var session = new AddBirthdayWizardSession(ChatId, UserId) { Step = AddWizardStep.Name };
         SetupSession(session);
@@ -116,7 +116,7 @@ public class AddBirthdayWizardFlowTests
 
         _storeMock.Verify(s => s.Upsert(
             It.Is<AddBirthdayWizardSession>(ss =>
-                ss.Name == "Alice" && ss.Step == AddWizardStep.LastName),
+                ss.Name == "Alice" && ss.Step == AddWizardStep.Date),
             It.IsAny<TimeSpan?>()), Times.AtLeastOnce);
     }
 
@@ -133,7 +133,7 @@ public class AddBirthdayWizardFlowTests
         await flow.TryHandleAsync(TextUpdate("A"));
 
         _storeMock.Verify(s => s.Upsert(
-            It.Is<AddBirthdayWizardSession>(ss => ss.Step == AddWizardStep.LastName),
+            It.Is<AddBirthdayWizardSession>(ss => ss.Step == AddWizardStep.Date),
             It.IsAny<TimeSpan?>()), Times.Never);
     }
 
@@ -195,7 +195,7 @@ public class AddBirthdayWizardFlowTests
     // ── Date step — text fallback DD.MM.YYYY ─────────────────────────────────
 
     [Fact]
-    public async Task DateStep_ValidTextDate_Advances_To_Relation()
+    public async Task DateStep_ValidTextDate_Advances_To_Confirmation()
     {
         var session = new AddBirthdayWizardSession(ChatId, UserId)
             { Step = AddWizardStep.Date, Name = "Alice" };
@@ -207,7 +207,7 @@ public class AddBirthdayWizardFlowTests
 
         _storeMock.Verify(s => s.Upsert(
             It.Is<AddBirthdayWizardSession>(ss =>
-                ss.Step == AddWizardStep.Relation &&
+                ss.Step == AddWizardStep.Confirm &&
                 ss.Date == new DateOnly(1990, 3, 15)),
             It.IsAny<TimeSpan?>()), Times.AtLeastOnce);
     }
@@ -243,14 +243,14 @@ public class AddBirthdayWizardFlowTests
         await flow.TryHandleAsync(TextUpdate("not-a-date-at-all"));
 
         _storeMock.Verify(s => s.Upsert(
-            It.Is<AddBirthdayWizardSession>(ss => ss.Step == AddWizardStep.Relation),
+            It.Is<AddBirthdayWizardSession>(ss => ss.Step == AddWizardStep.Confirm),
             It.IsAny<TimeSpan?>()), Times.Never);
     }
 
     // ── Calendar callbacks (cal:day:) select a date ───────────────────────────
 
     [Fact]
-    public async Task CalDayCallback_Stores_Date_And_Advances_To_Relation()
+    public async Task CalDayCallback_Stores_Date_And_Advances_To_Confirmation()
     {
         var session = new AddBirthdayWizardSession(ChatId, UserId)
             { Step = AddWizardStep.Date, Name = "Alice", CalendarMessageId = 10 };
@@ -262,7 +262,7 @@ public class AddBirthdayWizardFlowTests
 
         _storeMock.Verify(s => s.Upsert(
             It.Is<AddBirthdayWizardSession>(ss =>
-                ss.Step == AddWizardStep.Relation &&
+                ss.Step == AddWizardStep.Confirm &&
                 ss.Date == new DateOnly(1990, 3, 15)),
             It.IsAny<TimeSpan?>()), Times.AtLeastOnce);
     }
@@ -408,7 +408,7 @@ public class AddBirthdayWizardFlowTests
 
         // Step must remain Date
         _storeMock.Verify(s => s.Upsert(
-            It.Is<AddBirthdayWizardSession>(ss => ss.Step == AddWizardStep.Relation),
+            It.Is<AddBirthdayWizardSession>(ss => ss.Step == AddWizardStep.Confirm),
             It.IsAny<TimeSpan?>()), Times.Never);
     }
 }
