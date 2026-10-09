@@ -38,4 +38,9 @@ public class UserRepository : IUserRepository
     {
         return await _ctx.Users.Find(u => u.Id == id).FirstOrDefaultAsync(ct);
     }
+
+    public async Task<IReadOnlyList<User>> ListAllAsync(CancellationToken ct = default)
+    {
+        return await _ctx.Users.Find(Builders<User>.Filter.Empty).ToListAsync(ct);
+    }
 }
