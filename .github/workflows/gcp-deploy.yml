@@ -109,9 +109,9 @@ jobs:
           curl --silent --show-error --include "${SERVICE_URL}/" || true
 
           echo "Health response:"
-          curl --silent --show-error --include "${SERVICE_URL}/healthz" || true
+          curl --silent --show-error --include "${SERVICE_URL}/health" || true
 
-          curl --fail --silent --show-error --retry 3 --retry-delay 2 --retry-all-errors "${SERVICE_URL}/healthz"
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --retry-all-errors "${SERVICE_URL}/health"
 
       - name: Create or update reminder scheduler
         run: |
@@ -138,6 +138,6 @@ jobs:
         run: |
           SERVICE_URL="$(gcloud run services describe "${CLOUD_RUN_SERVICE}" --project="${GCP_PROJECT_ID}" --region="${GCP_REGION}" --format='value(status.url)')"
           echo "Cloud Run URL: ${SERVICE_URL}"
-          echo "Health: ${SERVICE_URL}/healthz"
+          echo "Health: ${SERVICE_URL}/health"
           echo "Telegram webhook: ${SERVICE_URL}/telegram/webhook"
           echo "Reminder scheduler: ${SCHEDULER_JOB}"
