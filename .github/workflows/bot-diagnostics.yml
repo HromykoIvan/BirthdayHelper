@@ -51,6 +51,7 @@ jobs:
           import json
           import sys
           import datetime as dt
+          import re
           from urllib.parse import urlparse
 
           with open(sys.argv[1], encoding="utf-8") as f:
@@ -73,6 +74,9 @@ jobs:
               status = "HTTP 5xx" if any(f"{x}" in message for x in range(500, 600)) else (
                   "HTTP 4xx" if any(f"{x}" in message for x in range(400, 500)) else "other")
               print("Last delivery error category:", status)
+              safe = re.sub(r"https?://[^\\s)]+", "[url-redacted]", message)
+              safe = re.sub(r"bot[0-9]+:[A-Za-z0-9_-]+", "[token-redacted]", safe)
+              print("Last delivery error (sanitized):", safe[:350])
               print("Last delivery error present:", True)
           else:
               print("Last delivery error present:", False)
