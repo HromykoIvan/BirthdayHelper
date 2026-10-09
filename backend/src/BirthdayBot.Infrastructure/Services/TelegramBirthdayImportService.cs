@@ -137,20 +137,25 @@ public sealed class TelegramBirthdayImportService
                 .ToListAsync(ct);
 
             var seen = new HashSet<string>(StringComparer.Ordinal);
+            var datesByName = new Dictionary<string, string>(StringComparer.Ordinal);
             var candidates = new List<BirthdayImportCandidate>();
             foreach (var entry in parsed.Entries)
             {
                 var normalizedName = Normalize(entry.FullName);
-                var fingerprint = $"{normalizedName}|{entry.Birthday.Month:D2}{entry.Birthday.Day:D2}";
+                var dateStamp = $"{entry.Birthday.Month:D2}{entry.Birthday.Day:D2}";
+                var fingerprint = $"{normalizedName}|{dateStamp}";
                 var nameMatches = existing.Where(b =>
                     Normalize(b.FullName) == normalizedName).ToArray();
 
+                var fileNameConflict = datesByName.TryGetValue(normalizedName, out var priorDate) &&
+                                       priorDate != dateStamp;
+                datesByName.TryAdd(normalizedName, dateStamp);
                 var repeatedInFile = !seen.Add(fingerprint);
                 var exactMatch = repeatedInFile || nameMatches.Any(b =>
                     b.Date.Month == entry.Birthday.Month &&
                     b.Date.Day == entry.Birthday.Day);
                 var status = exactMatch ? "Duplicate"
-                    : nameMatches.Length > 0 ? "Conflict"
+                    : nameMatches.Length > 0 || fileNameConflict ? "Conflict"
                     : "New";
 
                 candidates.Add(new BirthdayImportCandidate
