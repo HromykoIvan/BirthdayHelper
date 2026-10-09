@@ -107,22 +107,32 @@ public sealed class OpenAiIntentRouter : IIntentRouter
                 Interface language is {language}.
 
                 Supported intents:
-                - add_birthday: the message itself contains a person's name and a birthday date.
+                - add_birthday: the message contains a birthday day and month, even if the person's given name is unknown.
+                  Example "Добавь маму 28 июля, живёт в Добруше": add_birthday, day=28, month=7, year=0,
+                  first_name="", relation="mother", notes="Lives in Dobrush, Belarus".
+                  Do not invent a personal first name from a relationship ("мама", "mother", "mom").
                 - find_birthday: asks when a specific person's birthday is.
                 - remove_by_name: asks to delete a person.
-                - generate_greeting: asks to write/generate a greeting for a named person or occasion.
-                - open_add_birthday: wants to add a birthday but did not provide enough date information.
+                - generate_greeting: asks to write/create a greeting to a named person OR a relationship,
+                  such as "придумай поздравление для мамы". For the latter set entity_name="мама" (or the
+                  relationship text in the user's language) and occasion="birthday", NOT none.
+                - open_add_birthday: wants to add a birthday but did not provide BOTH day and month.
                 - open_list: asks to see birthdays/list/upcoming birthdays.
                 - open_settings, open_help.
                 - none.
 
                 Extraction rules:
                 - Never invent a birth year. Use year=0 if the year was not provided.
+                - Extract dates written with month names, such as "28 июля", "28 lipca", "July 28".
                 - Never invent relation, profession, interests, or notes. Use empty values when absent.
+                - Save explicitly stated locations and life details as notes; preserve the original meaning.
+                - Normalize clear relationship references to mother/father/wife/husband/sister/brother etc.
                 - Split a person's name into first_name/last_name when reasonably clear.
                 - day=0 and month=0 if no birthday date was supplied.
                 - entity_name should contain the person's name when relevant.
                 - For add/remove actions, requires_confirmation must be true.
+                - If the person's name is missing but day and month are present, return add_birthday
+                  with first_name empty. The bot will ask for the missing name without discarding the date.
                 - Treat common birthday abbreviations such as "др" and multilingual equivalents naturally.
                 """;
 
@@ -141,8 +151,9 @@ public sealed class OpenAiIntentRouter : IIntentRouter
             }
 
             var mapped = Map(result.Value, result);
-            if (mapped.Intent == UserIntentType.None && mapped.Confidence < 0.65)
+            if (mapped.Intent == UserIntentType.None)
             {
+                // Even a confidently wrong classification must not swallow a known command.
                 var local = await _fallback.ParseAsync(user, input, ct);
                 if (local.Intent != UserIntentType.None)
                 {
@@ -193,6 +204,9 @@ public sealed class OpenAiIntentRouter : IIntentRouter
                 InputTokens: common.InputTokens,
                 OutputTokens: common.OutputTokens),
 
+            "open_add_birthday" when IsValidDate(x.Day, x.Month, x.Year) =>
+                ToBirthdayDraft(x, call, confidence),
+
             "open_add_birthday" => new IntentParseResult(
                 UserIntentType.OpenAddBirthday,
                 Confidence: confidence,
@@ -233,25 +247,8 @@ public sealed class OpenAiIntentRouter : IIntentRouter
                 InputTokens: common.InputTokens,
                 OutputTokens: common.OutputTokens),
 
-            "add_birthday" when IsValidDate(x.Day, x.Month, x.Year) && !string.IsNullOrWhiteSpace(x.FirstName) =>
-                new IntentParseResult(
-                    UserIntentType.AddBirthdayFromText,
-                    EntityName: x.EntityName,
-                    Birthday: new BirthdayDraft(
-                        x.FirstName.Trim(),
-                        EmptyToNull(x.LastName),
-                        x.Day,
-                        x.Month,
-                        x.Year > 0 ? x.Year : null,
-                        EmptyToNull(x.Relation),
-                        EmptyToNull(x.Profession),
-                        x.Interests.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()).ToArray(),
-                        EmptyToNull(x.Notes)),
-                    RequiresConfirmation: true,
-                    Confidence: confidence,
-                    ModelSource: common.Source,
-                    InputTokens: common.InputTokens,
-                    OutputTokens: common.OutputTokens),
+            "add_birthday" when IsValidDate(x.Day, x.Month, x.Year) =>
+                ToBirthdayDraft(x, call, confidence),
 
             "add_birthday" => new IntentParseResult(
                 UserIntentType.OpenAddBirthday,
@@ -268,6 +265,29 @@ public sealed class OpenAiIntentRouter : IIntentRouter
                 OutputTokens: common.OutputTokens)
         };
     }
+
+    private static IntentParseResult ToBirthdayDraft(
+        IntentEnvelope x,
+        OpenAiCallResult<IntentEnvelope> call,
+        double confidence) =>
+        new(
+            UserIntentType.AddBirthdayFromText,
+            EntityName: x.EntityName,
+            Birthday: new BirthdayDraft(
+                x.FirstName.Trim(),
+                EmptyToNull(x.LastName),
+                x.Day,
+                x.Month,
+                x.Year > 0 ? x.Year : null,
+                EmptyToNull(x.Relation),
+                EmptyToNull(x.Profession),
+                x.Interests.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()).ToArray(),
+                EmptyToNull(x.Notes)),
+            RequiresConfirmation: true,
+            Confidence: confidence,
+            ModelSource: call.Model,
+            InputTokens: call.InputTokens,
+            OutputTokens: call.OutputTokens);
 
     private static bool IsValidDate(int day, int month, int year)
     {
