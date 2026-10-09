@@ -7,6 +7,8 @@ using User = BirthdayBot.Domain.Entities.User;
 using BirthdayBot.Domain.Enums;
 using BirthdayBot.Infrastructure.Mongo;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using BirthdayBot.Infrastructure.Options;
 using MongoDB.Driver;
 using Telegram.Bot;
 using Telegram.Bot.Types;
@@ -26,16 +28,19 @@ public sealed class TelegramBirthdayImportService
     private readonly MongoContext _database;
     private readonly ITelegramBotClient _bot;
     private readonly ILogger<TelegramBirthdayImportService> _logger;
+    private readonly VkImportOptions _vkOptions;
 
     public TelegramBirthdayImportService(
         MongoContext database,
         ITelegramBotClient bot,
+        IOptions<VkImportOptions> vkOptions,
         ILogger<TelegramBirthdayImportService> logger)
     {
         _sessions = database.ImportSessions;
         _database = database;
         _bot = bot;
         _logger = logger;
+        _vkOptions = vkOptions.Value;
     }
 
     public async Task ShowInstructionsAsync(User user, long chatId, CancellationToken ct)
@@ -64,10 +69,24 @@ public sealed class TelegramBirthdayImportService
                 "Phone numbers, emails and addresses are not saved. Max 2 MB, 1000 birthdays."
         };
 
+        var rows = new List<InlineKeyboardButton[]>();
+        if (_vkOptions.IsConfigured)
+        {
+            rows.Add(new[]
+            {
+                InlineKeyboardButton.WithCallbackData("🔗 ВКонтакте / VK", "vk:connect")
+            });
+        }
+
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData("🏠 Главное меню", "menu:home")
+        });
+
         await _bot.SendTextMessageAsync(
             chatId, message,
             parseMode: ParseMode.Html,
-            replyMarkup: Keyboards.BackToMenuKb(user.Lang),
+            replyMarkup: new InlineKeyboardMarkup(rows),
             cancellationToken: ct);
     }
 
