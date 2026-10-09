@@ -70,6 +70,22 @@ public class NaturalLanguageBirthdayTests
         BirthdayRecipientMatcher.FindMatches([mother, sister], "мамы").Should().ContainSingle().Which.Should().BeSameAs(mother);
     }
 
+    [Theory]
+    [InlineData("придумай поздравление для мамы", "мамы")]
+    [InlineData("напиши короткое поздравление для папы", "папы")]
+    [InlineData("сгенерируй поздравление для Татьяны", "Татьяны")]
+    public async Task ExplicitGreetingRequests_HaveReliableLocalFallback(
+        string input, string expectedRecipient)
+    {
+        using var metrics = new AiMetrics();
+        var router = new LocalIntentRouter(metrics);
+        var intent = await router.ParseAsync(new BirthdayBot.Domain.Entities.User(), input);
+
+        intent.Intent.Should().Be(BirthdayBot.Application.Models.UserIntentType.GenerateGreetingPreview);
+        intent.EntityName.Should().Be(expectedRecipient);
+        intent.Occasion.Should().Be("birthday");
+    }
+
     [Fact]
     public void DuplicateNames_AreNotSilentlyCollapsed()
     {
