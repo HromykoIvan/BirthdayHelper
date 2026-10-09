@@ -121,6 +121,42 @@ jobs:
           echo "Readiness response (includes MongoDB):"
           curl --fail --silent --show-error --retry 3 --retry-delay 2 --retry-all-errors "${SERVICE_URL}/health/ready"
 
+      - name: Verify OpenAI API and structured output
+        shell: bash
+        run: |
+          set -euo pipefail
+          OPENAI_API_KEY="$(gcloud secrets versions access latest --project="${GCP_PROJECT_ID}" --secret="birthday-helper-openai-api-key")"
+          RESPONSE_FILE="$(mktemp)"
+          HTTP_CODE="$(curl --silent --show-error --output "${RESPONSE_FILE}" --write-out "%{http_code}" \
+            --request POST "https://api.openai.com/v1/responses" \
+            --header "Authorization: Bearer ${OPENAI_API_KEY}" \
+            --header "Content-Type: application/json" \
+            --data '{"model":"gpt-6-luna","store":false,"reasoning":{"effort":"none"},"max_output_tokens":120,"instructions":"Return a JSON object with answer set to ok.","input":"Health check","text":{"verbosity":"low","format":{"type":"json_schema","name":"health_check","strict":true,"schema":{"type":"object","additionalProperties":false,"properties":{"answer":{"type":"string"}},"required":["answer"]}}}}')"
+          unset OPENAI_API_KEY
+
+          python3 - "${HTTP_CODE}" "${RESPONSE_FILE}" <<'PY'
+          import json
+          import sys
+
+          status = int(sys.argv[1])
+          with open(sys.argv[2], encoding="utf-8") as f:
+              response = json.load(f)
+
+          if status != 200:
+              error = response.get("error") or {}
+              print(f"OpenAI check failed (HTTP {status}): {error.get('type', 'unknown')} - {error.get('message', 'unknown')}")
+              raise SystemExit(1)
+
+          messages = [x for x in response.get("output", []) if x.get("type") == "message"]
+          content = [part.get("text") for msg in messages for part in msg.get("content", []) if part.get("type") == "output_text"]
+          if not content or json.loads(content[0]).get("answer") != "ok":
+              print("OpenAI check failed: unexpected structured response.")
+              raise SystemExit(1)
+
+          print(f"OpenAI structured-response smoke test OK ({response.get('model', 'unknown')})")
+          PY
+          rm -f "${RESPONSE_FILE}"
+
       - name: Create or update reminder scheduler
         run: |
           SERVICE_URL="$(gcloud run services describe "${CLOUD_RUN_SERVICE}" --project="${GCP_PROJECT_ID}" --region="${GCP_REGION}" --format='value(status.url)')"
