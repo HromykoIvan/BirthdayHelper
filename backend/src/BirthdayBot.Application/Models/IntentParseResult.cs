@@ -23,7 +23,10 @@ public sealed record IntentParseResult(
     SettingsUpdate? Settings = null,
     BirthdayDraft? Birthday = null,
     bool RequiresConfirmation = false,
-    double Confidence = 0d)
+    double Confidence = 0d,
+    string ModelSource = "local-intent-router",
+    int? InputTokens = null,
+    int? OutputTokens = null)
 {
     public static IntentParseResult NoMatch { get; } = new(UserIntentType.None);
 
