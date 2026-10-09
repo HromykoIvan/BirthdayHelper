@@ -210,7 +210,7 @@ public sealed class TelegramBirthdayImportService
         {
             ChatId = chatId,
             UserId = user.Id,
-            Source = extension,
+            Source = source,
             Candidates = candidates,
             WithoutBirthday = parsed.WithoutBirthday,
             Invalid = parsed.Invalid,
