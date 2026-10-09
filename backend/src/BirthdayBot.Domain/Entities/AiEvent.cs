@@ -18,6 +18,8 @@ public sealed class AiEvent
 
     public string? OutputText { get; set; }
 
+    public Dictionary<string, string>? OutputVariants { get; set; }
+
     public string? EntityName { get; set; }
 
     public string? Occasion { get; set; }
