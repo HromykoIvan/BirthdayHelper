@@ -69,6 +69,34 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
         _logger = logger;
     }
 
+    public async Task StartFromDraftAsync(
+        long chatId,
+        long userId,
+        BirthdayDraft draft,
+        CancellationToken ct = default)
+    {
+        if (!draft.HasValidDate)
+        {
+            throw new ArgumentException("Birthday draft has an invalid date.", nameof(draft));
+        }
+
+        var session = new AddBirthdayWizardSession(chatId, userId)
+        {
+            Step = AddWizardStep.Confirm,
+            Name = draft.FirstName.Trim(),
+            LastName = string.IsNullOrWhiteSpace(draft.LastName) ? null : draft.LastName.Trim(),
+            Date = draft.ToDateOnly(),
+            BirthYearKnown = draft.Year.HasValue,
+            Relation = draft.Relation,
+            Profession = draft.Profession,
+            Interests = string.IsNullOrWhiteSpace(draft.InterestsText) ? null : draft.InterestsText,
+            Notes = draft.Notes
+        };
+
+        _store.Upsert(session);
+        await SendConfirmation(chatId, session, ct);
+    }
+
     public async Task<bool> TryHandleAsync(Update update, CancellationToken ct = default)
     {
         try
@@ -183,10 +211,14 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                                 Name = s1.Name,
                                 LastName = s1.LastName,
                                 Date = s1.Date!.Value,
+                                BirthYearKnown = s1.BirthYearKnown ?? true,
                                 UserId = user.Id,
                                 TimeZoneId = user.Timezone ?? "Europe/Warsaw",
                                 Relation = s1.Relation,
                                 Interests = s1.Interests,
+                                Profession = s1.Profession,
+                                Notes = s1.Notes,
+                                GreetingLanguage = s1.GreetingLanguage
                             };
 
                             await _birthdays.CreateAsync(birthday, ct);
@@ -206,7 +238,10 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
 
                         var savedLang = await ResolveLanguageAsync(s1.UserId, ct);
                         await SafeEditAsync(update, chatId,
-                            string.Format(_i18n.GetText(savedLang, "wizard_saved_birthday"), fullName, $"{s1.Date:dd.MM.yyyy}"),
+                            string.Format(
+                                _i18n.GetText(savedLang, "wizard_saved_birthday"),
+                                fullName,
+                                FormatSessionDate(s1)),
                             ct, ParseMode.Html);
 
                         // Show main menu after save
@@ -303,7 +338,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
 
                     // ③ Date (text fallback — calendar is primary)
                     case AddWizardStep.Date:
-                        if (!TryParseDate(text, out var date))
+                        if (!TryParseDate(text, out var date, out var yearKnown))
                         {
                             await _bot.SendTextMessageAsync(chatId,
                                 _i18n.GetText(lang, "wizard_date_parse_error"),
@@ -313,6 +348,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                         }
 
                         s.Date = date;
+                        s.BirthYearKnown = yearKnown;
                         s.Step = AddWizardStep.Relation;
                         _store.Upsert(s);
 
@@ -449,6 +485,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                 if (DateOnly.TryParse(dateStr, out var date))
                 {
                     s.Date = date;
+                    s.BirthYearKnown = true;
                     s.Step = AddWizardStep.Relation;
                     _store.Upsert(s);
 
@@ -504,7 +541,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
         var text = string.Format(
             _i18n.GetText(lang, "confirm_summary"),
             fullName,
-            $"{s.Date:dd.MM.yyyy}",
+            FormatSessionDate(s),
             relation,
             interests);
 
@@ -532,9 +569,10 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
 
     // ── Date parsing ──
 
-    private static bool TryParseDate(string input, out DateOnly date)
+    private static bool TryParseDate(string input, out DateOnly date, out bool yearKnown)
     {
         input = input.Trim();
+        yearKnown = true;
 
         if (input.Equals("📅 Сегодня", StringComparison.OrdinalIgnoreCase) ||
             input.Equals("Сегодня", StringComparison.OrdinalIgnoreCase))
@@ -545,13 +583,30 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
         { date = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)); return true; }
 
         var m = DateRegex.Match(input);
-        if (!m.Success) { date = default; return false; }
+        if (!m.Success)
+        {
+            date = default;
+            return false;
+        }
 
         var d = int.Parse(m.Groups["d"].Value);
         var mm = int.Parse(m.Groups["m"].Value);
-        var year = m.Groups["y"].Success ? int.Parse(m.Groups["y"].Value) : DateTime.UtcNow.Year;
+        yearKnown = m.Groups["y"].Success;
+        var year = yearKnown ? int.Parse(m.Groups["y"].Value) : 2000;
 
         return DateOnly.TryParse($"{year:D4}-{mm:D2}-{d:D2}", out date);
+    }
+
+    private static string FormatSessionDate(AddBirthdayWizardSession session)
+    {
+        if (!session.Date.HasValue)
+        {
+            return "—";
+        }
+
+        return session.BirthYearKnown == false
+            ? $"{session.Date.Value:dd.MM}"
+            : $"{session.Date.Value:dd.MM.yyyy}";
     }
 
     // ── Safe Telegram API wrappers ──

@@ -22,6 +22,29 @@ public static class DateHelpers
         return (next, ageOnNext);
     }
 
+    /// <summary>
+    /// Returns the next birthday occurrence and a nullable age.
+    /// Age is null when the birth year is unknown.
+    /// </summary>
+    public static (LocalDate nextDate, int? turningAge) NextBirthdayOptionalAge(
+        LocalDate todayDate,
+        DateOnly dob,
+        bool birthYearKnown)
+    {
+        var targetYear = todayDate.Year;
+        var day = Math.Min(dob.Day, DateTime.DaysInMonth(targetYear, dob.Month));
+        var next = new LocalDate(targetYear, dob.Month, day);
+
+        if (next < todayDate)
+        {
+            targetYear++;
+            day = Math.Min(dob.Day, DateTime.DaysInMonth(targetYear, dob.Month));
+            next = new LocalDate(targetYear, dob.Month, day);
+        }
+
+        return (next, birthYearKnown ? next.Year - dob.Year : null);
+    }
+
     public static bool TryParseTimeHHmm(string input, out int hour, out int minute)
     {
         hour = 0; minute = 0;

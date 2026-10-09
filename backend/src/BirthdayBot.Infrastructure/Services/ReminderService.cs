@@ -2,16 +2,19 @@ using BirthdayBot.Application.Interfaces;
 using BirthdayBot.Application.UI;
 using BirthdayBot.Domain.Entities;
 using BirthdayBot.Domain.Enums;
+using BirthdayBot.Domain.Utils;
+using Microsoft.Extensions.Logging;
 using NodaTime;
 using System.Diagnostics;
 using Telegram.Bot;
 using Telegram.Bot.Types.ReplyMarkups;
-using Microsoft.Extensions.Logging;
 
 namespace BirthdayBot.Infrastructure.Services;
 
 public sealed class ReminderService : IReminderService
 {
+    private static readonly int[] DefaultReminderScheduleDays = [7, 1, 0];
+
     private readonly ILogger<ReminderService> _logger;
     private readonly IUserRepository _users;
     private readonly IBirthdayRepository _birthdays;
@@ -53,86 +56,7 @@ public sealed class ReminderService : IReminderService
         {
             try
             {
-                if (!_tzdb.Ids.Contains(user.Timezone))
-                {
-                    continue;
-                }
-
-                var zone = _tzdb[user.Timezone];
-                var nowZoned = SystemClock.Instance.GetCurrentInstant().InZone(zone);
-                var todayLocal = nowZoned.Date;
-
-                if (!BirthdayBot.Domain.Utils.DateHelpers.TryParseTimeHHmm(user.NotifyAtLocalTime, out var hh, out var mm))
-                {
-                    continue;
-                }
-
-                if (nowZoned.TimeOfDay.Hour != hh || nowZoned.TimeOfDay.Minute != mm)
-                {
-                    continue;
-                }
-
-                var list = await _birthdays.ListByUserAsync(user.Id, ct);
-                foreach (var birthday in list)
-                {
-                    var (next, age) = BirthdayBot.Domain.Utils.DateHelpers.NextBirthday(todayLocal, birthday.Date);
-                    var isToday = next == todayLocal;
-                    var isTomorrow = next == todayLocal.PlusDays(1);
-
-                    if (!isToday && !isTomorrow)
-                    {
-                        continue;
-                    }
-
-                    var when = isToday
-                        ? user.Lang == Language.Pl ? "DZIŚ" : user.Lang == Language.Ru ? "СЕГОДНЯ" : "TODAY"
-                        : user.Lang == Language.Pl ? "JUTRO" : user.Lang == Language.Ru ? "ЗАВТРА" : "TOMORROW";
-
-                    var message = $"{when}: {birthday.Name} — {next:yyyy-MM-dd} ({age})";
-                    InlineKeyboardMarkup? replyMarkup = null;
-
-                    if (user.AutoGenerateGreetings)
-                    {
-                        var draft = _greetings.GeneratePersonalized(user, birthday, age);
-                        var enhanceSw = Stopwatch.StartNew();
-                        var enhanced = await _enhancer.EnhanceAsync(user, birthday, draft, age, ct);
-                        enhanceSw.Stop();
-
-                        message += $"\n\n{enhanced.Text}";
-
-                        var aiEvent = await _aiEvents.CreateAsync(new AiEvent
-                        {
-                            UserId = user.Id,
-                            TelegramUserId = user.TelegramUserId,
-                            BirthdayId = birthday.Id,
-                            EventType = "enhance_reminder",
-                            InputText = draft,
-                            OutputText = enhanced.Text,
-                            IsFallback = enhanced.IsFallback,
-                            FallbackReason = enhanced.FallbackReason,
-                            PromptVersion = enhanced.PromptVersion,
-                            ModelSource = enhanced.ModelSource,
-                            LatencyMs = enhanceSw.Elapsed.TotalMilliseconds
-                        }, ct);
-
-                        replyMarkup = Keyboards.ReminderGreetingActionsKb(user.Lang, aiEvent.Id.ToString());
-                    }
-
-                    var sent = await _bot.SendTextMessageAsync(
-                        chatId: user.TelegramUserId,
-                        text: message,
-                        replyMarkup: replyMarkup,
-                        cancellationToken: ct);
-
-                    await _logs.CreateAsync(new DeliveryLog
-                    {
-                        UserId = user.Id,
-                        BirthdayId = birthday.Id,
-                        WhenUtc = DateTime.UtcNow,
-                        MessageId = sent.MessageId.ToString(),
-                        Status = "Sent"
-                    }, ct);
-                }
+                await ProcessUserAsync(user, ct);
             }
             catch (Exception ex)
             {
@@ -140,4 +64,222 @@ public sealed class ReminderService : IReminderService
             }
         }
     }
+
+    private async Task ProcessUserAsync(User user, CancellationToken ct)
+    {
+        if (!_tzdb.Ids.Contains(user.Timezone))
+        {
+            return;
+        }
+
+        var zone = _tzdb[user.Timezone];
+        var nowZoned = SystemClock.Instance.GetCurrentInstant().InZone(zone);
+        var todayLocal = nowZoned.Date;
+
+        if (!DateHelpers.TryParseTimeHHmm(user.NotifyAtLocalTime, out var hh, out var mm))
+        {
+            return;
+        }
+
+        // Cloud Scheduler calls once per minute. Only act during the user's selected minute.
+        if (nowZoned.TimeOfDay.Hour != hh || nowZoned.TimeOfDay.Minute != mm)
+        {
+            return;
+        }
+
+        var list = await _birthdays.ListByUserAsync(user.Id, ct);
+        foreach (var birthday in list)
+        {
+            try
+            {
+                await ProcessBirthdayAsync(user, birthday, todayLocal, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Reminder error for user {User}, birthday {BirthdayId}",
+                    user.TelegramUserId,
+                    birthday.Id);
+            }
+        }
+    }
+
+    private async Task ProcessBirthdayAsync(
+        User user,
+        Birthday birthday,
+        LocalDate todayLocal,
+        CancellationToken ct)
+    {
+        var (next, age) = DateHelpers.NextBirthdayOptionalAge(
+            todayLocal,
+            birthday.Date,
+            birthday.HasKnownBirthYear);
+
+        var daysBefore = Period.Between(todayLocal, next, PeriodUnits.Days).Days;
+        var schedule = GetReminderSchedule(birthday);
+        if (!schedule.Contains(daysBefore))
+        {
+            return;
+        }
+
+        // Reserve this logical delivery before calling AI or Telegram.
+        // The unique sparse index on DeliveryKey makes Scheduler retries idempotent.
+        var delivery = new DeliveryLog
+        {
+            UserId = user.Id,
+            BirthdayId = birthday.Id,
+            WhenUtc = DateTime.UtcNow,
+            DaysBefore = daysBefore,
+            DeliveryKey = $"{user.Id}:{birthday.Id}:{todayLocal:yyyyMMdd}:{daysBefore}",
+            Status = "Pending"
+        };
+
+        if (!await _logs.TryCreateAsync(delivery, ct))
+        {
+            _logger.LogDebug(
+                "Skipping duplicate reminder delivery {DeliveryKey}.",
+                delivery.DeliveryKey);
+            return;
+        }
+
+        var sendAttempted = false;
+        try
+        {
+            var when = FormatWhen(user.Lang, daysBefore);
+            var ageSuffix = age.HasValue ? $" ({age.Value})" : "";
+            var date = birthday.HasKnownBirthYear
+                ? $"{birthday.Date:dd.MM.yyyy}"
+                : $"{birthday.Date:dd.MM}";
+
+            var message = $"🎂 {when}: {birthday.FullName}\n📅 {date}{ageSuffix}";
+            InlineKeyboardMarkup? replyMarkup = null;
+
+            if (daysBefore > 0)
+            {
+                message += user.Lang switch
+                {
+                    Language.Ru => "\n\nМожно заранее подготовить поздравление.",
+                    Language.Pl => "\n\nMożesz wcześniej przygotować życzenia.",
+                    _ => "\n\nYou can prepare a greeting in advance."
+                };
+            }
+
+            if (user.AutoGenerateGreetings)
+            {
+                var draft = _greetings.GeneratePersonalized(user, birthday, age);
+                var enhanceSw = Stopwatch.StartNew();
+                var enhanced = await _enhancer.EnhanceAsync(user, birthday, draft, age, ct);
+                enhanceSw.Stop();
+
+                message += $"\n\n{enhanced.Text}";
+
+                var aiEvent = await _aiEvents.CreateAsync(new AiEvent
+                {
+                    UserId = user.Id,
+                    TelegramUserId = user.TelegramUserId,
+                    BirthdayId = birthday.Id,
+                    EventType = "enhance_reminder",
+                    InputText = draft,
+                    OutputText = enhanced.Text,
+                    OutputVariants = enhanced.Variants?.ToDictionary(x => x.Style, x => x.Text),
+                    IsFallback = enhanced.IsFallback,
+                    FallbackReason = enhanced.FallbackReason,
+                    PromptVersion = enhanced.PromptVersion,
+                    ModelSource = enhanced.ModelSource,
+                    InputTokens = enhanced.InputTokens,
+                    OutputTokens = enhanced.OutputTokens,
+                    LatencyMs = enhanceSw.Elapsed.TotalMilliseconds
+                }, ct);
+
+                replyMarkup = Keyboards.ReminderGreetingActionsKb(
+                    user.Lang,
+                    aiEvent.Id.ToString(),
+                    enhanced.Variants is { Count: > 0 });
+            }
+
+            // Once a Telegram send is attempted, the result may be ambiguous on timeout.
+            // Keep the unique reservation to avoid sending a possible duplicate on Scheduler retry.
+            sendAttempted = true;
+            var sent = await _bot.SendTextMessageAsync(
+                chatId: user.TelegramUserId,
+                text: message,
+                replyMarkup: replyMarkup,
+                cancellationToken: ct);
+
+            await _logs.UpdateStatusAsync(
+                delivery.Id,
+                status: "Sent",
+                messageId: sent.MessageId.ToString(),
+                ct: ct);
+        }
+        catch (Exception ex)
+        {
+            if (!sendAttempted)
+            {
+                // No Telegram request was made; it is safe to retry later.
+                await _logs.DeleteAsync(delivery.Id, CancellationToken.None);
+            }
+            else
+            {
+                // The HTTP request might have reached Telegram. Prefer no duplicate over
+                // automatic retry; support can inspect the delivery log and retry manually.
+                try
+                {
+                    await _logs.UpdateStatusAsync(
+                        delivery.Id,
+                        status: "Uncertain",
+                        error: "Telegram delivery or status update failed; manual review required",
+                        ct: CancellationToken.None);
+                }
+                catch (Exception logError)
+                {
+                    _logger.LogWarning(logError, "Failed to mark uncertain reminder {DeliveryKey}.", delivery.DeliveryKey);
+                }
+            }
+
+            _logger.LogWarning(
+                ex,
+                "Reminder delivery failed, TelegramAttempted={TelegramAttempted}, key {DeliveryKey}.",
+                sendAttempted,
+                delivery.DeliveryKey);
+            throw;
+        }
+    }
+
+    private static IReadOnlyCollection<int> GetReminderSchedule(Birthday birthday)
+    {
+        if (birthday.ReminderDaysBefore is { } custom)
+        {
+            return new[] { Math.Max(custom, 0), 0 }
+                .Distinct()
+                .OrderByDescending(x => x)
+                .ToArray();
+        }
+
+        return DefaultReminderScheduleDays;
+    }
+
+    private static string FormatWhen(Language language, int daysBefore) =>
+        language switch
+        {
+            Language.Ru => daysBefore switch
+            {
+                0 => "СЕГОДНЯ",
+                1 => "ЗАВТРА",
+                _ => $"ЧЕРЕЗ {daysBefore} ДН."
+            },
+            Language.Pl => daysBefore switch
+            {
+                0 => "DZISIAJ",
+                1 => "JUTRO",
+                _ => $"ZA {daysBefore} DNI"
+            },
+            _ => daysBefore switch
+            {
+                0 => "TODAY",
+                1 => "TOMORROW",
+                _ => $"IN {daysBefore} DAYS"
+            }
+        };
 }

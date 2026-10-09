@@ -291,8 +291,7 @@ public sealed class UpdateHandler : IUpdateHandler
         {
             case "menu:home":
                 var homeUser = await EnsureUser(cq.From, ct);
-                var homeName = Formatting.Html(cq.From.FirstName ?? "");
-                var homeWelcomeText = string.Format(_i18n.GetText(homeUser.Lang, "welcome"), homeName);
+                var homeWelcomeText = await BuildHomeTextAsync(homeUser, cq.From.FirstName ?? "", ct);
                 await SafeEditMessageAsync(chatId, cq.Message.MessageId,
                     homeWelcomeText,
                     ParseMode.Html, Keyboards.MainMenuKb(homeUser.Lang), ct);
@@ -382,7 +381,7 @@ public sealed class UpdateHandler : IUpdateHandler
             var items = list
                 .Select(b =>
                 {
-                    var (next, age) = DateHelpers.NextBirthday(today, b.Date);
+                    var (next, age) = DateHelpers.NextBirthdayOptionalAge(today, b.Date, b.HasKnownBirthYear);
                     return new UpcomingRow(b.FullName, b.Date, next, age, b.Relation);
                 })
                 .Where(x => x.NextDate >= from && x.NextDate <= to)
@@ -547,6 +546,55 @@ public sealed class UpdateHandler : IUpdateHandler
                     }
                 }
             }
+            else if (cq.Data is { } variantData && variantData.StartsWith("ai:variant:", StringComparison.Ordinal))
+            {
+                var parts = variantData.Split(':');
+                if (parts.Length != 4 ||
+                    !ObjectId.TryParse(parts[3], out var variantEventId))
+                {
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
+                    return;
+                }
+
+                var style = parts[2];
+                var sourceEvent = await _aiEvents.GetByIdAsync(variantEventId, ct);
+                if (sourceEvent?.UserId != user.Id ||
+                    sourceEvent.OutputVariants is null ||
+                    !sourceEvent.OutputVariants.TryGetValue(style, out var variantText) ||
+                    string.IsNullOrWhiteSpace(variantText))
+                {
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
+                    return;
+                }
+
+                var isTest = sourceEvent.EventType.StartsWith("enhance_test", StringComparison.Ordinal)
+                             || sourceEvent.EventType.StartsWith("enhance_regen", StringComparison.Ordinal)
+                             || sourceEvent.EventType.StartsWith("enhance_comment_regen", StringComparison.Ordinal);
+
+                var variantTitle = isTest
+                    ? _i18n.GetText(user.Lang, "ai_test_greeting_title")
+                    : _i18n.GetText(user.Lang, "ai_improved_title");
+
+                await _aiEvents.SelectGreetingVariantAsync(variantEventId, user.Id, style, ct);
+
+                var variantRendered = BuildRenderedGreeting(
+                    user.Lang,
+                    variantText,
+                    sourceEvent.IsFallback,
+                    variantTitle);
+
+                var variantKeyboard = isTest
+                    ? Keyboards.TestGreetingKb(user.Lang, $"ai:test:regen:{sourceEvent.Id}", hasVariants: true)
+                    : Keyboards.ReminderGreetingActionsKb(user.Lang, sourceEvent.Id.ToString(), hasVariants: true);
+
+                await SafeEditMessageAsync(
+                    cq.Message!.Chat.Id,
+                    cq.Message.MessageId,
+                    variantRendered,
+                    ParseMode.Html,
+                    variantKeyboard,
+                    ct);
+            }
             else if (cq.Data is { } aiEventRegenerate && aiEventRegenerate.StartsWith("ai:improve:event:", StringComparison.Ordinal))
             {
                 var eventIdText = aiEventRegenerate["ai:improve:event:".Length..];
@@ -562,6 +610,12 @@ public sealed class UpdateHandler : IUpdateHandler
             {
                 var eventIdText = aiEventComment["ai:comment:event:".Length..];
                 if (!ObjectId.TryParse(eventIdText, out var eventId))
+                {
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
+                    return;
+                }
+
+                if ((await _aiEvents.GetByIdAsync(eventId, ct))?.UserId != user.Id)
                 {
                     await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
                     return;
@@ -583,7 +637,8 @@ public sealed class UpdateHandler : IUpdateHandler
             else if (cq.Data is { } aiEventAccept && aiEventAccept.StartsWith("ai:accept:event:", StringComparison.Ordinal))
             {
                 var eventIdText = aiEventAccept["ai:accept:event:".Length..];
-                if (ObjectId.TryParse(eventIdText, out var eventId))
+                if (ObjectId.TryParse(eventIdText, out var eventId) &&
+                    (await _aiEvents.GetByIdAsync(eventId, ct))?.UserId == user.Id)
                 {
                     await _aiEvents.MarkAcceptedExampleAsync(eventId, true, ct);
                     await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "ai_example_saved"), ct);
@@ -604,7 +659,7 @@ public sealed class UpdateHandler : IUpdateHandler
 
                     var zone = _tzdb[user.Timezone];
                     var today = SystemClock.Instance.GetCurrentInstant().InZone(zone).Date;
-                    var (_, age) = DateHelpers.NextBirthday(today, entry.Date);
+                    var (_, age) = DateHelpers.NextBirthdayOptionalAge(today, entry.Date, entry.HasKnownBirthYear);
                     var draft = _greetings.GeneratePersonalized(user, entry, age);
                     var improveSw = Stopwatch.StartNew();
                     var improved = await _enhancer.EnhanceAsync(user, entry, draft, age, ct);
@@ -618,10 +673,13 @@ public sealed class UpdateHandler : IUpdateHandler
                         EventType = "enhance",
                         InputText = draft,
                         OutputText = improved.Text,
+                        OutputVariants = ToVariantDictionary(improved),
                         IsFallback = improved.IsFallback,
                         FallbackReason = improved.FallbackReason,
                         PromptVersion = improved.PromptVersion,
                         ModelSource = improved.ModelSource,
+                        InputTokens = improved.InputTokens,
+                        OutputTokens = improved.OutputTokens,
                         LatencyMs = improveSw.Elapsed.TotalMilliseconds
                     }, ct);
 
@@ -631,7 +689,10 @@ public sealed class UpdateHandler : IUpdateHandler
                         cq.Message.MessageId,
                         text,
                         ParseMode.Html,
-                        Keyboards.ReminderGreetingActionsKb(user.Lang, aiEvent.Id.ToString()),
+                        Keyboards.ReminderGreetingActionsKb(
+                            user.Lang,
+                            aiEvent.Id.ToString(),
+                            improved.Variants is { Count: > 0 }),
                         ct);
                 }
             }
@@ -671,7 +732,8 @@ public sealed class UpdateHandler : IUpdateHandler
             else if (cq.Data is { } testAcceptData && testAcceptData.StartsWith("ai:test:accept:", StringComparison.Ordinal))
             {
                 var eventIdText = testAcceptData["ai:test:accept:".Length..];
-                if (ObjectId.TryParse(eventIdText, out var eventId))
+                if (ObjectId.TryParse(eventIdText, out var eventId) &&
+                    (await _aiEvents.GetByIdAsync(eventId, ct))?.UserId == user.Id)
                 {
                     await _aiEvents.MarkAcceptedExampleAsync(eventId, true, ct);
                     await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "ai_example_saved"), ct);
@@ -891,14 +953,58 @@ public sealed class UpdateHandler : IUpdateHandler
     /// <summary>Sends the main menu with a welcome message.</summary>
     private async Task SendMainMenu(long chatId, Telegram.Bot.Types.User tgUser, BirthdayBot.Domain.Entities.User user, CancellationToken ct)
     {
-        var name = Formatting.Html(tgUser.FirstName ?? "");
-        var welcomeText = string.Format(_i18n.GetText(user.Lang, "welcome"), name);
-        
+        var welcomeText = await BuildHomeTextAsync(user, tgUser.FirstName ?? "", ct);
+
         await _bot.SendTextMessageAsync(chatId,
             welcomeText,
             parseMode: ParseMode.Html,
             replyMarkup: Keyboards.MainMenuKb(user.Lang),
             cancellationToken: ct);
+    }
+
+    private async Task<string> BuildHomeTextAsync(
+        BirthdayBot.Domain.Entities.User user,
+        string telegramFirstName,
+        CancellationToken ct)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(string.Format(
+            _i18n.GetText(user.Lang, "welcome"),
+            Formatting.Html(telegramFirstName)));
+
+        var entries = await _birthdays.ListByUserAsync(user.Id, ct);
+        if (entries.Count > 0 && _tzdb.Ids.Contains(user.Timezone))
+        {
+            var zone = _tzdb[user.Timezone];
+            var today = SystemClock.Instance.GetCurrentInstant().InZone(zone).Date;
+            var upcoming = BuildBirthdayRows(entries, today).Take(3).ToArray();
+
+            sb.AppendLine();
+            sb.AppendLine(user.Lang switch
+            {
+                Language.Ru => "🎂 <b>Ближайшие:</b>",
+                Language.Pl => "🎂 <b>Najbliższe:</b>",
+                _ => "🎂 <b>Coming up:</b>"
+            });
+
+            foreach (var item in upcoming)
+            {
+                var days = Period.Between(today, item.NextDate, PeriodUnits.Days).Days;
+                sb.AppendLine(
+                    $"• <b>{Formatting.Html(item.Birthday.FullName)}</b> — " +
+                    $"{item.NextDate.Day:D2}.{item.NextDate.Month:D2} · {FormatDaysUntil(user.Lang, days)}");
+            }
+        }
+
+        sb.AppendLine();
+        sb.AppendLine(user.Lang switch
+        {
+            Language.Ru => "💬 Можно просто написать: <i>«Добавь жену Татьяну, 17 января 1989, врач, любит рисовать»</i>",
+            Language.Pl => "💬 Możesz po prostu napisać: <i>„Dodaj żonę Annę, 17 stycznia 1989, lekarka, lubi malować”</i>",
+            _ => "💬 You can simply write: <i>“Add my wife Anna, January 17 1989, doctor, loves painting”</i>"
+        });
+
+        return sb.ToString();
     }
 
     /// <summary>Sends language selection for new users.</summary>
@@ -972,7 +1078,7 @@ public sealed class UpdateHandler : IUpdateHandler
             var items = list
                 .Select(b =>
                 {
-                    var (next, age) = DateHelpers.NextBirthday(today, b.Date);
+                    var (next, age) = DateHelpers.NextBirthdayOptionalAge(today, b.Date, b.HasKnownBirthYear);
                 return new UpcomingRow(b.FullName, b.Date, next, age, b.Relation);
                 })
             .Where(x => x.NextDate.Year == year && x.NextDate.Month == month)
@@ -993,8 +1099,8 @@ public sealed class UpdateHandler : IUpdateHandler
             {
                 var dayStr = $"{i.NextDate.Day:D2}.{i.NextDate.Month:D2}";
                 var relation = string.IsNullOrWhiteSpace(i.Relation) ? "" : $" · {Formatting.Html(i.Relation)}";
-                sb.AppendLine($"🎂 <b>{Formatting.Html(i.Name)}</b> — {dayStr}, " +
-                              $"{i.Age} {YearWord(user.Lang, i.Age)}{relation}");
+                var ageText = i.Age.HasValue ? $", {i.Age.Value} {YearWord(user.Lang, i.Age.Value)}" : "";
+                sb.AppendLine($"🎂 <b>{Formatting.Html(i.Name)}</b> — {dayStr}{ageText}{relation}");
             }
         }
 
@@ -1040,13 +1146,17 @@ public sealed class UpdateHandler : IUpdateHandler
         {
             var relation = string.IsNullOrWhiteSpace(item.Birthday.Relation) ? "" : $" · {Formatting.Html(item.Birthday.Relation)}";
             var interests = string.IsNullOrWhiteSpace(item.Birthday.Interests) ? "" : $"\n   💡 {Formatting.Html(item.Birthday.Interests)}";
-            var next = string.Format(_i18n.GetText(user.Lang, "next_occurrence"),
-                $"{item.NextDate.Day:D2}.{item.NextDate.Month:D2}",
-                item.Age,
-                YearWord(user.Lang, item.Age));
+            var nextDate = $"{item.NextDate.Day:D2}.{item.NextDate.Month:D2}";
+            var next = item.Age.HasValue
+                ? string.Format(_i18n.GetText(user.Lang, "next_occurrence"),
+                    nextDate,
+                    item.Age.Value,
+                    YearWord(user.Lang, item.Age.Value))
+                : nextDate;
+            var birthDate = FormatBirthdayDate(item.Birthday);
 
             sb.AppendLine($"🎂 <b>{Formatting.Html(item.Birthday.FullName)}</b>");
-            sb.AppendLine($"   📅 {item.Birthday.Date:dd.MM.yyyy} → {next}{relation}{interests}");
+            sb.AppendLine($"   📅 {birthDate} → {next}{relation}{interests}");
         }
 
         await SendOrEditAsync(chatId, messageId, sb.ToString(), ParseMode.Html,
@@ -1091,7 +1201,7 @@ public sealed class UpdateHandler : IUpdateHandler
             var item = pageRows[i];
             var number = first + i;
             var relation = string.IsNullOrWhiteSpace(item.Birthday.Relation) ? "" : $" · {Formatting.Html(item.Birthday.Relation)}";
-            sb.AppendLine($"{number}. 🎂 <b>{Formatting.Html(item.Birthday.FullName)}</b> — {item.Birthday.Date:dd.MM.yyyy}{relation}");
+            sb.AppendLine($"{number}. 🎂 <b>{Formatting.Html(item.Birthday.FullName)}</b> — {FormatBirthdayDate(item.Birthday)}{relation}");
         }
 
         await SendOrEditAsync(chatId, messageId, sb.ToString(), ParseMode.Html,
@@ -1111,28 +1221,33 @@ public sealed class UpdateHandler : IUpdateHandler
         {
             var dayStr = $"{i.NextDate.Day:D2}.{i.NextDate.Month:D2}";
             var relation = string.IsNullOrWhiteSpace(i.Relation) ? "" : $" · {Formatting.Html(i.Relation)}";
-            sb.AppendLine($"🎂 <b>{Formatting.Html(i.Name)}</b> — {dayStr}, " +
-                          $"{i.Age} {YearWord(lang, i.Age)}{relation}");
+            var ageText = i.Age.HasValue ? $", {i.Age.Value} {YearWord(lang, i.Age.Value)}" : "";
+            sb.AppendLine($"🎂 <b>{Formatting.Html(i.Name)}</b> — {dayStr}{ageText}{relation}");
         }
 
         return sb.ToString();
     }
 
-    private record struct UpcomingRow(string Name, DateOnly BirthDate, LocalDate NextDate, int Age, string? Relation);
-    private record struct BirthdayListRow(Birthday Birthday, LocalDate NextDate, int Age);
+    private record struct UpcomingRow(string Name, DateOnly BirthDate, LocalDate NextDate, int? Age, string? Relation);
+    private record struct BirthdayListRow(Birthday Birthday, LocalDate NextDate, int? Age);
 
     private List<BirthdayListRow> BuildBirthdayRows(IEnumerable<Birthday> birthdays, LocalDate today)
     {
         return birthdays
             .Select(b =>
             {
-                var (next, age) = DateHelpers.NextBirthday(today, b.Date);
+                var (next, age) = DateHelpers.NextBirthdayOptionalAge(today, b.Date, b.HasKnownBirthYear);
                 return new BirthdayListRow(b, next, age);
             })
             .OrderBy(x => x.NextDate)
             .ThenBy(x => x.Birthday.FullName, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+
+    private static string FormatBirthdayDate(Birthday birthday) =>
+        birthday.HasKnownBirthYear
+            ? $"{birthday.Date:dd.MM.yyyy}"
+            : $"{birthday.Date:dd.MM}";
 
     private InlineKeyboardMarkup BuildAllEntriesKeyboard(Language lang, int page, int total)
     {
@@ -1259,6 +1374,29 @@ public sealed class UpdateHandler : IUpdateHandler
         return Math.Clamp(page, 0, lastPage);
     }
 
+    private static string FormatDaysUntil(Language lang, int days) =>
+        lang switch
+        {
+            Language.Ru => days switch
+            {
+                0 => "Сегодня",
+                1 => "Завтра",
+                _ => $"Через {days} дн."
+            },
+            Language.Pl => days switch
+            {
+                0 => "Dzisiaj",
+                1 => "Jutro",
+                _ => $"Za {days} dni"
+            },
+            _ => days switch
+            {
+                0 => "Today",
+                1 => "Tomorrow",
+                _ => $"In {days} days"
+            }
+        };
+
     private string YearWord(Language lang, int age)
     {
         return lang switch
@@ -1296,7 +1434,9 @@ public sealed class UpdateHandler : IUpdateHandler
             IsFallback = isFallback,
             FallbackReason = isFallback ? "no_match" : null,
             PromptVersion = _promptProfiles.IntentPromptVersion,
-            ModelSource = "local-intent-router",
+            ModelSource = intent.ModelSource,
+            InputTokens = intent.InputTokens,
+            OutputTokens = intent.OutputTokens,
             LatencyMs = parseSw.Elapsed.TotalMilliseconds
         }, ct);
 
@@ -1333,6 +1473,47 @@ public sealed class UpdateHandler : IUpdateHandler
 
             case UserIntentType.OpenList:
                 await SendCurrentMonthView(user, chatId, ct);
+                return true;
+
+            case UserIntentType.AddBirthdayFromText when intent.Birthday is not null:
+                await _wizard.StartFromDraftAsync(chatId, tgUser.Id, intent.Birthday, ct);
+                return true;
+
+            case UserIntentType.FindBirthday when !string.IsNullOrWhiteSpace(intent.EntityName):
+                var foundBirthday = await _birthdays.FindByNameAsync(user.Id, intent.EntityName, ct);
+                if (foundBirthday is null)
+                {
+                    await _bot.SendTextMessageAsync(
+                        chatId,
+                        _i18n.GetText(user.Lang, "entry_not_found"),
+                        replyMarkup: Keyboards.BackToMenuKb(user.Lang),
+                        cancellationToken: ct);
+                    return true;
+                }
+
+                var foundZone = _tzdb[user.Timezone];
+                var foundToday = SystemClock.Instance.GetCurrentInstant().InZone(foundZone).Date;
+                var (foundNext, foundAge) = DateHelpers.NextBirthdayOptionalAge(
+                    foundToday,
+                    foundBirthday.Date,
+                    foundBirthday.HasKnownBirthYear);
+                var daysUntil = Period.Between(foundToday, foundNext, PeriodUnits.Days).Days;
+                var foundDate = FormatBirthdayDate(foundBirthday);
+                var agePart = foundAge.HasValue
+                    ? $" · {foundAge.Value} {YearWord(user.Lang, foundAge.Value)}"
+                    : "";
+                var relationPart = string.IsNullOrWhiteSpace(foundBirthday.Relation)
+                    ? ""
+                    : $"\n👥 {Formatting.Html(foundBirthday.Relation)}";
+
+                await _bot.SendTextMessageAsync(
+                    chatId,
+                    $"🎂 <b>{Formatting.Html(foundBirthday.FullName)}</b>\n" +
+                    $"📅 {foundDate}{agePart}\n" +
+                    $"⏳ {FormatDaysUntil(user.Lang, daysUntil)}{relationPart}",
+                    parseMode: ParseMode.Html,
+                    replyMarkup: Keyboards.BackToMenuKb(user.Lang),
+                    cancellationToken: ct);
                 return true;
 
             case UserIntentType.RemoveByName when !string.IsNullOrWhiteSpace(intent.EntityName):
@@ -1395,12 +1576,12 @@ public sealed class UpdateHandler : IUpdateHandler
             UserId = user.Id,
             Name = fullName,
             Date = DateOnly.FromDateTime(DateTime.UtcNow),
-            Relation = "test"
+            BirthYearKnown = false
         };
 
         var draft = BuildGreetingPreviewDraft(user.Lang, previewBirthday.FullName, occasion);
         var enhanceSw = Stopwatch.StartNew();
-        var enhanced = await _enhancer.EnhanceAsync(user, previewBirthday, draft, age: 30, ct);
+        var enhanced = await _enhancer.EnhanceAsync(user, previewBirthday, draft, age: null, ct);
         enhanceSw.Stop();
 
         var aiEvent = await _aiEvents.CreateAsync(new AiEvent
@@ -1410,17 +1591,23 @@ public sealed class UpdateHandler : IUpdateHandler
             EventType = "enhance_test",
             InputText = draft,
             OutputText = enhanced.Text,
+            OutputVariants = ToVariantDictionary(enhanced),
             EntityName = fullName,
             Occasion = occasion,
             IsFallback = enhanced.IsFallback,
             FallbackReason = enhanced.FallbackReason,
             PromptVersion = enhanced.PromptVersion,
             ModelSource = enhanced.ModelSource,
+            InputTokens = enhanced.InputTokens,
+            OutputTokens = enhanced.OutputTokens,
             LatencyMs = enhanceSw.Elapsed.TotalMilliseconds
         }, ct);
 
         var finalText = BuildRenderedGreeting(user.Lang, enhanced.Text, enhanced.IsFallback, _i18n.GetText(user.Lang, "ai_test_greeting_title"));
-        var keyboard = Keyboards.TestGreetingKb(user.Lang, $"ai:test:regen:{aiEvent.Id}");
+        var keyboard = Keyboards.TestGreetingKb(
+            user.Lang,
+            $"ai:test:regen:{aiEvent.Id}",
+            enhanced.Variants is { Count: > 0 });
         if (replaceExistingMessage && messageId.HasValue)
         {
             await SafeEditMessageAsync(chatId, messageId.Value, finalText, ParseMode.Html, keyboard, ct);
@@ -1461,7 +1648,7 @@ public sealed class UpdateHandler : IUpdateHandler
         CancellationToken ct)
     {
         var source = await _aiEvents.GetByIdAsync(sourceEventId, ct);
-        if (source is null)
+        if (source is null || source.UserId != user.Id)
         {
             await _bot.SendTextMessageAsync(chatId, _i18n.GetText(user.Lang, "error_try_again"), cancellationToken: ct);
             return;
@@ -1479,8 +1666,17 @@ public sealed class UpdateHandler : IUpdateHandler
             ? baseDraft
             : $"{baseDraft}\n\nAdditional user instruction: {userComment}";
 
+        int? age = null;
+        if (birthday.Id != ObjectId.Empty)
+        {
+            var zone = _tzdb[user.Timezone];
+            var today = SystemClock.Instance.GetCurrentInstant().InZone(zone).Date;
+            var (_, calculatedAge) = DateHelpers.NextBirthdayOptionalAge(today, birthday.Date, birthday.HasKnownBirthYear);
+            age = calculatedAge;
+        }
+
         var regenSw = Stopwatch.StartNew();
-        var enhanced = await _enhancer.EnhanceAsync(user, birthday, draft, age: 30, ct);
+        var enhanced = await _enhancer.EnhanceAsync(user, birthday, draft, age, ct);
         regenSw.Stop();
 
         var nextEvent = await _aiEvents.CreateAsync(new AiEvent
@@ -1492,6 +1688,7 @@ public sealed class UpdateHandler : IUpdateHandler
             EventType = string.IsNullOrWhiteSpace(userComment) ? "enhance_regen" : "enhance_comment_regen",
             InputText = draft,
             OutputText = enhanced.Text,
+            OutputVariants = ToVariantDictionary(enhanced),
             EntityName = source.EntityName ?? birthday.FullName,
             Occasion = source.Occasion,
             UserComment = userComment,
@@ -1499,6 +1696,8 @@ public sealed class UpdateHandler : IUpdateHandler
             FallbackReason = enhanced.FallbackReason,
             PromptVersion = enhanced.PromptVersion,
             ModelSource = enhanced.ModelSource,
+            InputTokens = enhanced.InputTokens,
+            OutputTokens = enhanced.OutputTokens,
             LatencyMs = regenSw.Elapsed.TotalMilliseconds
         }, ct);
 
@@ -1510,8 +1709,14 @@ public sealed class UpdateHandler : IUpdateHandler
 
         var text = BuildRenderedGreeting(user.Lang, enhanced.Text, enhanced.IsFallback, title);
         var keyboard = source.EventType.StartsWith("enhance_test", StringComparison.Ordinal)
-            ? Keyboards.TestGreetingKb(user.Lang, $"ai:test:regen:{nextEvent.Id}")
-            : Keyboards.ReminderGreetingActionsKb(user.Lang, nextEvent.Id.ToString());
+            ? Keyboards.TestGreetingKb(
+                user.Lang,
+                $"ai:test:regen:{nextEvent.Id}",
+                enhanced.Variants is { Count: > 0 })
+            : Keyboards.ReminderGreetingActionsKb(
+                user.Lang,
+                nextEvent.Id.ToString(),
+                enhanced.Variants is { Count: > 0 });
 
         if (messageId.HasValue)
         {
@@ -1541,8 +1746,24 @@ public sealed class UpdateHandler : IUpdateHandler
             UserId = user.Id,
             Name = source.EntityName ?? "Friend",
             Date = DateOnly.FromDateTime(DateTime.UtcNow),
-            Relation = "test"
+            BirthYearKnown = false
         };
+    }
+
+    private static Dictionary<string, string>? ToVariantDictionary(AiEnhanceResult result)
+    {
+        if (result.Variants is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        return result.Variants
+            .Where(x => !string.IsNullOrWhiteSpace(x.Style) && !string.IsNullOrWhiteSpace(x.Text))
+            .GroupBy(x => x.Style, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key.ToLowerInvariant(),
+                g => g.Last().Text,
+                StringComparer.OrdinalIgnoreCase);
     }
 
     private string BuildRenderedGreeting(Language lang, string text, bool isFallback, string title)

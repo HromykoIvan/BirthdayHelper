@@ -18,6 +18,8 @@ public sealed class AiEvent
 
     public string? OutputText { get; set; }
 
+    public Dictionary<string, string>? OutputVariants { get; set; }
+
     public string? EntityName { get; set; }
 
     public string? Occasion { get; set; }
@@ -43,6 +45,9 @@ public sealed class AiEvent
     public string? ModelSource { get; set; }
 
     public double? LatencyMs { get; set; }
+
+    public int? InputTokens { get; set; }
+    public int? OutputTokens { get; set; }
 
     public bool IsAcceptedExample { get; set; }
 

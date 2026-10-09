@@ -13,10 +13,13 @@ public sealed class AddBirthdayWizardSession
     public string? Name { get; set; }
     public string? LastName { get; set; }
     public DateOnly? Date { get; set; }
+    public bool? BirthYearKnown { get; set; }
 
     public string? TimeZoneId { get; set; }
     public string? Relation { get; set; }
     public string? Interests { get; set; }
+    public string? Profession { get; set; }
+    public string? Notes { get; set; }
     public Language? GreetingLanguage { get; set; }
 
     public bool WaitingCity { get; set; }     // waiting for city text input

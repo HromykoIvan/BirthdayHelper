@@ -11,7 +11,6 @@ using Telegram.Bot;
 using BirthdayBot.Application.Services;
 using BirthdayBot.Infrastructure.Sessions;
 using BirthdayBot.Infrastructure.Geo;
-using BirthdayBot.Infrastructure.Flows;
 
 namespace BirthdayBot.Api.DI;
 
@@ -26,6 +25,7 @@ public static class ServiceCollectionExtensions
         services.Configure<MetricsOptions>(cfg.GetSection("Metrics"));
         services.Configure<AiEvalOptions>(cfg.GetSection("AiEval"));
         services.Configure<LocalAiOptions>(cfg.GetSection("LocalAi"));
+        services.Configure<OpenAiOptions>(cfg.GetSection("OpenAi"));
         services.Configure<UserRateLimitOptions>(cfg.GetSection("UserRateLimit"));
         services.Configure<PromptProfileOptions>(cfg.GetSection("PromptProfiles"));
 
@@ -38,21 +38,26 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IGreetingGenerator, GreetingGenerator>();
         services.AddSingleton<AiMetrics>();
-        services.AddSingleton<IIntentRouter, LocalIntentRouter>();
+        services.AddSingleton<LocalIntentRouter>();
+        services.AddSingleton<IIntentRouter, OpenAiIntentRouter>();
         services.AddSingleton<IUserUpdateRateLimiter, UserUpdateRateLimiter>();
-        services.AddSingleton<IAiGreetingEnhancer, LocalAiGreetingEnhancer>();
+        services.AddSingleton<IAiGreetingEnhancer, OpenAiGreetingEnhancer>();
+
+        services.AddHttpClient<OpenAiResponsesClient>((sp, client) =>
+        {
+            var options = sp.GetRequiredService<IOptions<OpenAiOptions>>().Value;
+            client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
+            client.Timeout = TimeSpan.FromSeconds(Math.Clamp(options.TimeoutSeconds, 3, 60));
+        });
         services.AddSingleton<IAiEvalService, AiEvalService>();
         services.AddSingleton<ILocalizationService, LocalizationService>();
 
         services.AddSingleton<InMemoryConversationState>();
         services.AddScoped<IUpdateHandler, UpdateHandler>();
         services.AddMemoryCache();
-        services.AddSingleton<IConversationSessionStore, InMemoryConversationSessionStore>();
-        services.AddSingleton<IAiFeedbackSessionStore, InMemoryAiFeedbackSessionStore>();
+        services.AddSingleton<IConversationSessionStore, MongoConversationSessionStore>();
+        services.AddSingleton<IAiFeedbackSessionStore, MongoAiFeedbackSessionStore>();
         services.AddScoped<IWizardFlow, AddBirthdayWizardFlow>();
-        // Хранилище сессий мастера
-        services.AddSingleton<IAddBirthdayWizardSessionStore, InMemoryAddBirthdayWizardSessionStore>();
-
         // TimeZoneResolver + HttpClient
         services.AddHttpClient<ITimeZoneResolver, TimeZoneResolver>();
 

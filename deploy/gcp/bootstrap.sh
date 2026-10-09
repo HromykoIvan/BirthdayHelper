@@ -15,6 +15,7 @@ SECRET_TELEGRAM_TOKEN="birthday-helper-telegram-token"
 SECRET_TELEGRAM_WEBHOOK="birthday-helper-telegram-webhook-secret"
 SECRET_MONGODB_URI="birthday-helper-mongodb-uri"
 SECRET_SCHEDULER="birthday-helper-scheduler-secret"
+SECRET_OPENAI_API_KEY="birthday-helper-openai-api-key"
 
 DEPLOY_SA_EMAIL="${DEPLOY_SERVICE_ACCOUNT}@${PROJECT_ID}.iam.gserviceaccount.com"
 RUNTIME_SA_EMAIL="${RUNTIME_SERVICE_ACCOUNT}@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -75,7 +76,7 @@ if ! gcloud artifacts repositories describe "$ARTIFACT_REPOSITORY"   --project="
 fi
 
 echo "Creating Secret Manager secrets..."
-for secret in   "$SECRET_TELEGRAM_TOKEN"   "$SECRET_TELEGRAM_WEBHOOK"   "$SECRET_MONGODB_URI"   "$SECRET_SCHEDULER"; do
+for secret in   "$SECRET_TELEGRAM_TOKEN"   "$SECRET_TELEGRAM_WEBHOOK"   "$SECRET_MONGODB_URI"   "$SECRET_SCHEDULER"   "$SECRET_OPENAI_API_KEY"; do
   ensure_secret "$secret"
 done
 
@@ -103,6 +104,18 @@ if ! secret_has_enabled_version "$SECRET_MONGODB_URI"; then
   unset MONGODB_URI
 fi
 
+if ! secret_has_enabled_version "$SECRET_OPENAI_API_KEY"; then
+  echo
+  read -r -s -p "Paste the OpenAI API key for BirthdayHelper: " OPENAI_API_KEY
+  echo
+  if [[ -z "$OPENAI_API_KEY" ]]; then
+    echo "OpenAI API key cannot be empty." >&2
+    exit 1
+  fi
+  add_secret_value "$SECRET_OPENAI_API_KEY" "$OPENAI_API_KEY"
+  unset OPENAI_API_KEY
+fi
+
 if ! secret_has_enabled_version "$SECRET_TELEGRAM_WEBHOOK"; then
   add_secret_value "$SECRET_TELEGRAM_WEBHOOK" "$(openssl rand -hex 32)"
 fi
@@ -112,7 +125,7 @@ if ! secret_has_enabled_version "$SECRET_SCHEDULER"; then
 fi
 
 echo "Granting runtime access to secrets..."
-for secret in   "$SECRET_TELEGRAM_TOKEN"   "$SECRET_TELEGRAM_WEBHOOK"   "$SECRET_MONGODB_URI"   "$SECRET_SCHEDULER"; do
+for secret in   "$SECRET_TELEGRAM_TOKEN"   "$SECRET_TELEGRAM_WEBHOOK"   "$SECRET_MONGODB_URI"   "$SECRET_SCHEDULER"   "$SECRET_OPENAI_API_KEY"; do
   gcloud secrets add-iam-policy-binding "$secret"     --project="$PROJECT_ID"     --member="serviceAccount:${RUNTIME_SA_EMAIL}"     --role="roles/secretmanager.secretAccessor" >/dev/null
 
   gcloud secrets add-iam-policy-binding "$secret"     --project="$PROJECT_ID"     --member="serviceAccount:${DEPLOY_SA_EMAIL}"     --role="roles/secretmanager.secretAccessor" >/dev/null

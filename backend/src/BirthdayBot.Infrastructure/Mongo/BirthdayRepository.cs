@@ -40,6 +40,21 @@ public sealed class BirthdayRepository : IBirthdayRepository
 
     public async Task<Birthday?> FindByNameAsync(ObjectId userId, string name, CancellationToken ct = default)
     {
-        return await _ctx.Birthdays.Find(b => b.UserId == userId && b.Name.ToLower() == name.ToLower()).FirstOrDefaultAsync(ct);
+        var normalized = name.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return null;
+        }
+
+        // A user's birthday list is expected to be small. Loading the user's entries here
+        // lets us match first name or full name reliably without locale-sensitive Mongo expressions.
+        var entries = await _ctx.Birthdays.Find(b => b.UserId == userId).ToListAsync(ct);
+
+        return entries.FirstOrDefault(b =>
+                   string.Equals(b.FullName, normalized, StringComparison.OrdinalIgnoreCase))
+               ?? entries.FirstOrDefault(b =>
+                   string.Equals(b.Name, normalized, StringComparison.OrdinalIgnoreCase))
+               ?? entries.FirstOrDefault(b =>
+                   b.FullName.Contains(normalized, StringComparison.OrdinalIgnoreCase));
     }
 }

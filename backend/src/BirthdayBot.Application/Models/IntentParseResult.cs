@@ -11,7 +11,9 @@ public enum UserIntentType
     OpenList = 4,
     RemoveByName = 5,
     UpdateSettings = 6,
-    GenerateGreetingPreview = 7
+    GenerateGreetingPreview = 7,
+    AddBirthdayFromText = 8,
+    FindBirthday = 9
 }
 
 public sealed record IntentParseResult(
@@ -19,8 +21,12 @@ public sealed record IntentParseResult(
     string? EntityName = null,
     string? Occasion = null,
     SettingsUpdate? Settings = null,
+    BirthdayDraft? Birthday = null,
     bool RequiresConfirmation = false,
-    double Confidence = 0d)
+    double Confidence = 0d,
+    string ModelSource = "local-intent-router",
+    int? InputTokens = null,
+    int? OutputTokens = null)
 {
     public static IntentParseResult NoMatch { get; } = new(UserIntentType.None);
 
@@ -35,4 +41,11 @@ public sealed record IntentParseResult(
 
     public static IntentParseResult ForSettings(SettingsUpdate update, double confidence = 0.7d) =>
         new(UserIntentType.UpdateSettings, Settings: update, Confidence: confidence);
+
+    public static IntentParseResult ForBirthdayDraft(BirthdayDraft draft, double confidence = 0.9d) =>
+        new(UserIntentType.AddBirthdayFromText, EntityName: draft.FirstName, Birthday: draft,
+            RequiresConfirmation: true, Confidence: confidence);
+
+    public static IntentParseResult ForFindBirthday(string entityName, double confidence = 0.9d) =>
+        new(UserIntentType.FindBirthday, EntityName: entityName, Confidence: confidence);
 }

@@ -21,6 +21,10 @@ public class MongoContext
     public IMongoCollection<Birthday> Birthdays => Database.GetCollection<Birthday>("birthdays");
     public IMongoCollection<DeliveryLog> DeliveryLogs => Database.GetCollection<DeliveryLog>("delivery_logs");
     public IMongoCollection<AiEvent> AiEvents => Database.GetCollection<AiEvent>("ai_events");
+    public IMongoCollection<ConversationSessionDocument> ConversationSessions =>
+        Database.GetCollection<ConversationSessionDocument>("conversation_sessions");
+    public IMongoCollection<AiFeedbackSessionDocument> AiFeedbackSessions =>
+        Database.GetCollection<AiFeedbackSessionDocument>("ai_feedback_sessions");
 
     public MongoContext(IOptions<MongoOptions> options, ILogger<MongoContext> logger)
     {
@@ -93,6 +97,16 @@ public class MongoContext
             new CreateIndexOptions { Name = "ix_logs_user" });
             await DeliveryLogs.Indexes.CreateOneAsync(logsIdx, cancellationToken: ct);
 
+            var deliveryKeyIdx = new CreateIndexModel<DeliveryLog>(
+                Builders<DeliveryLog>.IndexKeys.Ascending(l => l.DeliveryKey),
+                new CreateIndexOptions
+                {
+                    Name = "ux_delivery_key",
+                    Unique = true,
+                    Sparse = true
+                });
+            await DeliveryLogs.Indexes.CreateOneAsync(deliveryKeyIdx, cancellationToken: ct);
+
             var aiCreatedIdx = new CreateIndexModel<AiEvent>(
                 Builders<AiEvent>.IndexKeys.Descending(e => e.CreatedAtUtc),
                 new CreateIndexOptions { Name = "ix_ai_events_created" });
@@ -102,6 +116,24 @@ public class MongoContext
                 Builders<AiEvent>.IndexKeys.Ascending(e => e.EventType).Ascending(e => e.ExpectedIntent),
                 new CreateIndexOptions { Name = "ix_ai_events_intent_eval" });
             await AiEvents.Indexes.CreateOneAsync(aiIntentIdx, cancellationToken: ct);
+
+            var conversationTtlIdx = new CreateIndexModel<ConversationSessionDocument>(
+                Builders<ConversationSessionDocument>.IndexKeys.Ascending(x => x.ExpiresAtUtc),
+                new CreateIndexOptions
+                {
+                    Name = "ttl_conversation_sessions",
+                    ExpireAfter = TimeSpan.Zero
+                });
+            await ConversationSessions.Indexes.CreateOneAsync(conversationTtlIdx, cancellationToken: ct);
+
+            var feedbackTtlIdx = new CreateIndexModel<AiFeedbackSessionDocument>(
+                Builders<AiFeedbackSessionDocument>.IndexKeys.Ascending(x => x.ExpiresAtUtc),
+                new CreateIndexOptions
+                {
+                    Name = "ttl_ai_feedback_sessions",
+                    ExpireAfter = TimeSpan.Zero
+                });
+            await AiFeedbackSessions.Indexes.CreateOneAsync(feedbackTtlIdx, cancellationToken: ct);
 
             _indexesEnsured = true;
             _logger.LogInformation("MongoDB indexes are ensured.");

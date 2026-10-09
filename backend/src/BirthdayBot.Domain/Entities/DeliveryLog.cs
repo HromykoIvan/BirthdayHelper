@@ -14,6 +14,13 @@ public class DeliveryLog
 
     public DateTime WhenUtc { get; set; } = DateTime.UtcNow;
 
+    /// <summary>
+    /// Stable key for one logical reminder delivery. Used to make Cloud Scheduler retries idempotent.
+    /// </summary>
+    public string? DeliveryKey { get; set; }
+
+    public int? DaysBefore { get; set; }
+
     public string? MessageId { get; set; }
 
     public string Status { get; set; } = "Sent";

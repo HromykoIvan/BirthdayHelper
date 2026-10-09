@@ -29,6 +29,31 @@ public sealed class AiEventRepository : IAiEventRepository
         return result.ModifiedCount > 0;
     }
 
+    public async Task<bool> SelectGreetingVariantAsync(
+        ObjectId eventId,
+        ObjectId userId,
+        string style,
+        CancellationToken ct = default)
+    {
+        var source = await _ctx.AiEvents
+            .Find(x => x.Id == eventId && x.UserId == userId)
+            .FirstOrDefaultAsync(ct);
+
+        if (source?.OutputVariants is null ||
+            !source.OutputVariants.TryGetValue(style, out var selected) ||
+            string.IsNullOrWhiteSpace(selected))
+        {
+            return false;
+        }
+
+        var result = await _ctx.AiEvents.UpdateOneAsync(
+            x => x.Id == eventId && x.UserId == userId,
+            Builders<AiEvent>.Update.Set(x => x.OutputText, selected),
+            cancellationToken: ct);
+
+        return result.MatchedCount > 0;
+    }
+
     public async Task<List<AiEvent>> ListAcceptedGreetingExamplesAsync(ObjectId userId, int take = 3, CancellationToken ct = default)
     {
         var filter = Builders<AiEvent>.Filter.Eq(x => x.UserId, userId)

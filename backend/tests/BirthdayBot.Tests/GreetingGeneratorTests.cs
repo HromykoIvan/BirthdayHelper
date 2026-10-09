@@ -37,8 +37,19 @@ public class GreetingGeneratorTests
         var text = gen.GeneratePersonalized(user, birthday, 28);
 
         text.Should().Contain("Alex");
-        text.Should().Contain("28");
-        text.Should().Contain("friend");
         text.Should().Contain("chess");
+        text.Should().NotContain("28");
+        text.Should().NotContain("(friend)");
+    }
+
+    [Fact]
+    public void Should_Not_Invent_Age_When_Year_Is_Unknown()
+    {
+        var gen = new GreetingGenerator();
+
+        var text = gen.Generate(Language.En, Tone.Friendly, "Alex", age: null);
+
+        text.Should().Contain("Alex");
+        text.Should().NotContain("0");
     }
 }
