@@ -11,10 +11,15 @@ public static class PersonProfileEditor
         "name", "date", "relation", "interests", "profession", "gifts", "notes", "memory"
     };
 
+    private static readonly IReadOnlySet<string> AppendFields = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "append_interests", "append_gifts"
+    };
+
     public static bool TryApply(Birthday person, string field, string input, out string error)
     {
         error = "";
-        if (!Fields.Contains(field))
+        if (!Fields.Contains(field) && !AppendFields.Contains(field))
         {
             error = "unknown";
             return false;
@@ -29,7 +34,7 @@ public static class PersonProfileEditor
 
         // A dash clears optional fields. It must never erase the person's name or birthday.
         var clear = value is "-" or "—";
-        if (clear && (field is "name" or "date" or "memory"))
+        if (clear && (field is "name" or "date" or "memory" or "append_interests" or "append_gifts"))
         {
             error = "empty";
             return false;
@@ -77,6 +82,12 @@ public static class PersonProfileEditor
             case "profession": person.Profession = clear ? null : value; break;
             case "gifts": person.GiftIdeas = clear ? null : value; break;
             case "notes": person.Notes = clear ? null : value; break;
+            case "append_interests":
+                return TryAppend(person.Interests, value, 2000,
+                    next => person.Interests = next, out error);
+            case "append_gifts":
+                return TryAppend(person.GiftIdeas, value, 2000,
+                    next => person.GiftIdeas = next, out error);
 
             case "memory":
                 var appended = string.IsNullOrWhiteSpace(person.Notes)
@@ -93,4 +104,23 @@ public static class PersonProfileEditor
 
         return true;
     }
+    private static bool TryAppend(string? existing, string value, int limit,
+        Action<string> apply, out string error)
+    {
+        error = "";
+        var values = (existing ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries |
+            StringSplitOptions.TrimEntries);
+        if (values.Any(x => string.Equals(x, value, StringComparison.OrdinalIgnoreCase)))
+            return true; // Idempotent: do not repeat an interest/gift preference.
+
+        var combined = string.IsNullOrWhiteSpace(existing) ? value : existing.Trim() + "; " + value;
+        if (combined.Length > limit)
+        {
+            error = "notes_full";
+            return false;
+        }
+        apply(combined);
+        return true;
+    }
+
 }
