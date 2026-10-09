@@ -27,6 +27,7 @@ public class RegisterBotCommandsHostedService : BackgroundService
             new BotCommand { Command = "start",         Description = "Приветствие" },
             new BotCommand { Command = "add_birthday",  Description = "Добавить день рождения" },
             new BotCommand { Command = "list",          Description = "Показать список" },
+            new BotCommand { Command = "import",        Description = "Импортировать контакты (.vcf/.csv)" },
             new BotCommand { Command = "remove",        Description = "Удалить запись" },
             new BotCommand { Command = "settings",      Description = "Настройки" },
             new BotCommand { Command = "help",          Description = "Помощь" },

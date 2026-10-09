@@ -54,6 +54,7 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<InMemoryConversationState>();
         services.AddScoped<IUpdateHandler, UpdateHandler>();
+        services.AddScoped<TelegramBirthdayImportService>();
         services.AddMemoryCache();
         services.AddSingleton<IConversationSessionStore, MongoConversationSessionStore>();
         services.AddSingleton<IAiFeedbackSessionStore, MongoAiFeedbackSessionStore>();
