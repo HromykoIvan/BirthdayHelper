@@ -272,9 +272,26 @@ public sealed class UpdateHandler : IUpdateHandler
         if (await TryHandleIntentAsync(user, msg.From!, chatId, text, ct))
             return;
 
-        // Fallback — show main menu
-        var fallbackUser = await EnsureUser(msg.From!, ct);
-        await SendMainMenu(chatId, msg.From!, fallbackUser, ct);
+        // Unknown free text should produce a useful clarification, not a fresh welcome screen.
+        var clarification = user.Lang switch
+        {
+            Language.Ru => "Не совсем понял запрос. Можно написать, например:\n" +
+                           "• «Придумай поздравление для мамы»\n" +
+                           "• «Добавь маму 28 июля, живёт в Добруше»\n" +
+                           "• «У кого скоро день рождения?»",
+            Language.Pl => "Nie do końca rozumiem. Możesz napisać:\n" +
+                           "• „Napisz życzenia dla mamy”\n" +
+                           "• „Dodaj mamę, 28 lipca”\n" +
+                           "• „Kto ma niedługo urodziny?”",
+            _ => "I didn't quite understand. You can say:\n" +
+                 "• “Write a birthday greeting for mom”\n" +
+                 "• “Add mom's birthday on July 28”\n" +
+                 "• “Whose birthday is coming up?”"
+        };
+        await _bot.SendTextMessageAsync(
+            chatId, clarification,
+            replyMarkup: Keyboards.MainMenuKb(user.Lang),
+            cancellationToken: ct);
     }
 
     // ════════════════════════════════════════════
