@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: birthday-helper-production
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   GCP_PROJECT_ID: birthdayhelper-511100
