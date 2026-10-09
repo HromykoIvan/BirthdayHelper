@@ -57,6 +57,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUpdateHandler, UpdateHandler>();
         services.AddScoped<TelegramBirthdayImportService>();
         services.AddScoped<PersonProfileService>();
+        services.AddScoped<SmartMemoryService>();
         services.AddHttpClient<VkImportService>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(30);
