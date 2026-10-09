@@ -77,11 +77,13 @@ public sealed class SmartMemoryService
         }
 
         // A new proposed fact replaces the previous unconfirmed fact in this chat.
+        var proposalToken = Guid.NewGuid().ToString("N")[..12];
         var doc = new MemoryFactSessionDocument
         {
             ChatId = chatId,
             TelegramUserId = msg.From.Id,
             OwnerId = user.Id,
+            Token = proposalToken,
             CandidateIds = matches.Select(x => x.Id).ToList(),
             SelectedPersonId = matches.Count == 1 ? matches[0].Id : null,
             Field = fact.Field,
@@ -98,11 +100,11 @@ public sealed class SmartMemoryService
                 {
                     InlineKeyboardButton.WithCallbackData(
                         $"👤 {Trim(x.FullName, 35)} · {x.Date:dd.MM}",
-                        $"memory:pick:{x.Id}")
+                        $"memory:pick:{proposalToken}:{x.Id}")
                 })
                 .ToList();
             options.Add(new[] { InlineKeyboardButton.WithCallbackData(
-                T(user.Lang, "Не сохранять", "Nie zapisuj", "Don't save"), "memory:cancel") });
+                T(user.Lang, "Не сохранять", "Nie zapisuj", "Don't save"), $"memory:cancel:{proposalToken}") });
 
             await _bot.SendTextMessageAsync(chatId,
                 T(user.Lang,
@@ -114,7 +116,7 @@ public sealed class SmartMemoryService
         }
         else
         {
-            await OfferConfirmationAsync(user, chatId, matches[0], fact.Field, fact.Value, ct);
+            await OfferConfirmationAsync(user, chatId, matches[0], fact.Field, fact.Value, proposalToken, ct);
         }
 
         return true;
@@ -124,10 +126,19 @@ public sealed class SmartMemoryService
     {
         var chatId = callback.Message?.Chat.Id ?? callback.From.Id;
         var data = callback.Data ?? "";
-
-        if (data == "memory:cancel")
+        var segments = data.Split(':');
+        var token = segments.Length >= 3 ? segments[2] : "";
+        if (token.Length != 12 || !token.All(Uri.IsHexDigit))
         {
-            await CancelPendingAsync(chatId, callback.From.Id, ct);
+            await _bot.AnswerCallbackQueryAsync(callback.Id, cancellationToken: ct);
+            return;
+        }
+
+        if (segments.Length == 3 && segments[1] == "cancel")
+        {
+            await _sessions.DeleteOneAsync(x => x.ChatId == chatId &&
+                x.TelegramUserId == callback.From.Id && x.OwnerId == user.Id &&
+                x.Token == token, ct);
             await _bot.AnswerCallbackQueryAsync(callback.Id, cancellationToken: ct);
             await _bot.SendTextMessageAsync(chatId,
                 T(user.Lang, "Хорошо, не сохраняю.", "Dobrze, nie zapisuję.", "Okay, I won't save it."),
@@ -137,9 +148,10 @@ public sealed class SmartMemoryService
 
         var filter = Builders<MemoryFactSessionDocument>.Filter.Where(s =>
             s.ChatId == chatId && s.TelegramUserId == callback.From.Id &&
-            s.OwnerId == user.Id && s.ExpiresAtUtc > DateTime.UtcNow);
-        if (data.StartsWith("memory:pick:", StringComparison.Ordinal) &&
-            ObjectId.TryParse(data["memory:pick:".Length..], out var chosenId))
+            s.OwnerId == user.Id && s.Token == token &&
+            s.ExpiresAtUtc > DateTime.UtcNow);
+        if (segments.Length == 4 && segments[1] == "pick" &&
+            ObjectId.TryParse(segments[3], out var chosenId))
         {
             var withCandidate = filter & Builders<MemoryFactSessionDocument>.Filter
                 .AnyEq(x => x.CandidateIds, chosenId);
@@ -163,11 +175,11 @@ public sealed class SmartMemoryService
             }
 
             await _bot.AnswerCallbackQueryAsync(callback.Id, cancellationToken: ct);
-            await OfferConfirmationAsync(user, chatId, person, updated.Field, updated.Value, ct);
+            await OfferConfirmationAsync(user, chatId, person, updated.Field, updated.Value, token, ct);
             return;
         }
 
-        if (data == "memory:save")
+        if (segments.Length == 3 && segments[1] == "save")
         {
             // Atomic consume guarantees a double tap never appends the same fact twice.
             var selected = filter &
@@ -219,7 +231,7 @@ public sealed class SmartMemoryService
     }
 
     private async Task OfferConfirmationAsync(PersonOwner user, long chatId, Birthday person,
-        string field, string value, CancellationToken ct)
+        string field, string value, string token, CancellationToken ct)
     {
         var category = field switch
         {
@@ -238,9 +250,9 @@ public sealed class SmartMemoryService
             {
                 new[] {
                     InlineKeyboardButton.WithCallbackData(
-                        T(user.Lang, "✅ Запомнить", "✅ Zapisz", "✅ Save"), "memory:save"),
+                        T(user.Lang, "✅ Запомнить", "✅ Zapisz", "✅ Save"), $"memory:save:{token}"),
                     InlineKeyboardButton.WithCallbackData(
-                        T(user.Lang, "❌ Не надо", "❌ Nie", "❌ No thanks"), "memory:cancel")
+                        T(user.Lang, "❌ Не надо", "❌ Nie", "❌ No thanks"), $"memory:cancel:{token}")
                 }
             }), cancellationToken: ct);
     }
