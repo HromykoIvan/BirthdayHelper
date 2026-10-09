@@ -208,6 +208,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                         return true;
 
                     case "add:save" when s1.Name is not null && s1.Date is not null:
+                        MongoDB.Bson.ObjectId savedBirthdayId;
                         try
                         {
                             var user = await _users.GetByTelegramUserIdAsync(s1.UserId, ct);
@@ -248,7 +249,7 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                                 GreetingLanguage = s1.GreetingLanguage
                             };
 
-                            await _birthdays.CreateAsync(birthday, ct);
+                            savedBirthdayId = await _birthdays.CreateAsync(birthday, ct);
                             _store.Remove(chatId);
                         }
                         catch (Exception ex)
@@ -272,11 +273,9 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                             ct, ParseMode.Html);
 
                         // Open the new person in one tap to add details later.
-                        var savedPerson = await _birthdays.FindByNameAsync(user!.Id,
-                            string.IsNullOrWhiteSpace(s1.LastName) ? s1.Name! : s1.Name + " " + s1.LastName, ct);
-                        var nextRows = new List<InlineKeyboardButton[]>();
-                        if (savedPerson is not null)
-                            nextRows.Add(new[]
+                        var nextRows = new List<InlineKeyboardButton[]>
+                        {
+                            new[]
                             {
                                 InlineKeyboardButton.WithCallbackData(
                                     savedLang switch
@@ -284,8 +283,9 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                                         Language.Ru => "👤 Дополнить карточку",
                                         Language.Pl => "👤 Uzupełnij profil",
                                         _ => "👤 Add more details"
-                                    }, $"person:show:{savedPerson.Id}")
-                            });
+                                    }, $"person:show:{savedBirthdayId}")
+                            }
+                        };
                         nextRows.Add(new[]
                         {
                             InlineKeyboardButton.WithCallbackData(
