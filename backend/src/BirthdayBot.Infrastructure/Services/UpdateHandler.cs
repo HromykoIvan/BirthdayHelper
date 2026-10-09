@@ -382,7 +382,7 @@ public sealed class UpdateHandler : IUpdateHandler
             var items = list
                 .Select(b =>
                 {
-                    var (next, age) = DateHelpers.NextBirthday(today, b.Date);
+                    var (next, age) = DateHelpers.NextBirthdayOptionalAge(today, b.Date, b.HasKnownBirthYear);
                     return new UpcomingRow(b.FullName, b.Date, next, age, b.Relation);
                 })
                 .Where(x => x.NextDate >= from && x.NextDate <= to)
@@ -972,7 +972,7 @@ public sealed class UpdateHandler : IUpdateHandler
             var items = list
                 .Select(b =>
                 {
-                    var (next, age) = DateHelpers.NextBirthday(today, b.Date);
+                    var (next, age) = DateHelpers.NextBirthdayOptionalAge(today, b.Date, b.HasKnownBirthYear);
                 return new UpcomingRow(b.FullName, b.Date, next, age, b.Relation);
                 })
             .Where(x => x.NextDate.Year == year && x.NextDate.Month == month)
@@ -1111,14 +1111,14 @@ public sealed class UpdateHandler : IUpdateHandler
         {
             var dayStr = $"{i.NextDate.Day:D2}.{i.NextDate.Month:D2}";
             var relation = string.IsNullOrWhiteSpace(i.Relation) ? "" : $" · {Formatting.Html(i.Relation)}";
-            sb.AppendLine($"🎂 <b>{Formatting.Html(i.Name)}</b> — {dayStr}, " +
-                          $"{i.Age} {YearWord(lang, i.Age)}{relation}");
+            var ageText = i.Age.HasValue ? $", {i.Age.Value} {YearWord(lang, i.Age.Value)}" : "";
+            sb.AppendLine($"🎂 <b>{Formatting.Html(i.Name)}</b> — {dayStr}{ageText}{relation}");
         }
 
         return sb.ToString();
     }
 
-    private record struct UpcomingRow(string Name, DateOnly BirthDate, LocalDate NextDate, int Age, string? Relation);
+    private record struct UpcomingRow(string Name, DateOnly BirthDate, LocalDate NextDate, int? Age, string? Relation);
     private record struct BirthdayListRow(Birthday Birthday, LocalDate NextDate, int Age);
 
     private List<BirthdayListRow> BuildBirthdayRows(IEnumerable<Birthday> birthdays, LocalDate today)
@@ -1126,7 +1126,7 @@ public sealed class UpdateHandler : IUpdateHandler
         return birthdays
             .Select(b =>
             {
-                var (next, age) = DateHelpers.NextBirthday(today, b.Date);
+                var (next, age) = DateHelpers.NextBirthdayOptionalAge(today, b.Date, b.HasKnownBirthYear);
                 return new BirthdayListRow(b, next, age);
             })
             .OrderBy(x => x.NextDate)
