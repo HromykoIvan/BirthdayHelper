@@ -33,6 +33,12 @@ public sealed class PersonProfileService
         _sessions = context.PersonProfileSessions;
     }
 
+    public async Task CancelPendingAsync(long chatId, long telegramUserId, CancellationToken ct)
+    {
+        await _sessions.DeleteOneAsync(x => x.ChatId == chatId &&
+            x.TelegramUserId == telegramUserId, ct);
+    }
+
     private static string L(Language lang, string ru, string pl, string en) =>
         lang switch { Language.Ru => ru, Language.Pl => pl, _ => en };
 
@@ -113,6 +119,7 @@ public sealed class PersonProfileService
 
         if (data.StartsWith("person:list:", StringComparison.Ordinal))
         {
+            await CancelPendingAsync(chatId, callback.From.Id, ct);
             var page = int.TryParse(data["person:list:".Length..], out var p) ? p : 0;
             await _bot.AnswerCallbackQueryAsync(callback.Id, cancellationToken: ct);
             await ShowPeopleAsync(user, chatId, page, messageId, ct);
@@ -141,6 +148,7 @@ public sealed class PersonProfileService
 
         if (action == "show")
         {
+            await CancelPendingAsync(chatId, callback.From.Id, ct);
             await _bot.AnswerCallbackQueryAsync(callback.Id, cancellationToken: ct);
             await ShowPersonAsync(user, person, chatId, messageId, ct);
             return;
