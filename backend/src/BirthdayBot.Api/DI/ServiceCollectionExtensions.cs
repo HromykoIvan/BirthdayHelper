@@ -56,8 +56,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<InMemoryConversationState>();
         services.AddScoped<IUpdateHandler, UpdateHandler>();
         services.AddMemoryCache();
-        services.AddSingleton<IConversationSessionStore, InMemoryConversationSessionStore>();
-        services.AddSingleton<IAiFeedbackSessionStore, InMemoryAiFeedbackSessionStore>();
+        services.AddSingleton<IConversationSessionStore, MongoConversationSessionStore>();
+        services.AddSingleton<IAiFeedbackSessionStore, MongoAiFeedbackSessionStore>();
         services.AddScoped<IWizardFlow, AddBirthdayWizardFlow>();
         // Хранилище сессий мастера
         services.AddSingleton<IAddBirthdayWizardSessionStore, InMemoryAddBirthdayWizardSessionStore>();
