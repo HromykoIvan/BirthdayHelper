@@ -558,7 +558,8 @@ public sealed class UpdateHandler : IUpdateHandler
 
                 var style = parts[2];
                 var sourceEvent = await _aiEvents.GetByIdAsync(variantEventId, ct);
-                if (sourceEvent?.OutputVariants is null ||
+                if (sourceEvent?.UserId != user.Id ||
+                    sourceEvent.OutputVariants is null ||
                     !sourceEvent.OutputVariants.TryGetValue(style, out var variantText) ||
                     string.IsNullOrWhiteSpace(variantText))
                 {
@@ -573,6 +574,8 @@ public sealed class UpdateHandler : IUpdateHandler
                 var variantTitle = isTest
                     ? _i18n.GetText(user.Lang, "ai_test_greeting_title")
                     : _i18n.GetText(user.Lang, "ai_improved_title");
+
+                await _aiEvents.SelectGreetingVariantAsync(variantEventId, user.Id, style, ct);
 
                 var variantRendered = BuildRenderedGreeting(
                     user.Lang,
@@ -612,6 +615,12 @@ public sealed class UpdateHandler : IUpdateHandler
                     return;
                 }
 
+                if ((await _aiEvents.GetByIdAsync(eventId, ct))?.UserId != user.Id)
+                {
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
+                    return;
+                }
+
                 _aiFeedbackSessions.Upsert(new AiFeedbackSession
                 {
                     ChatId = cq.Message!.Chat.Id,
@@ -628,7 +637,8 @@ public sealed class UpdateHandler : IUpdateHandler
             else if (cq.Data is { } aiEventAccept && aiEventAccept.StartsWith("ai:accept:event:", StringComparison.Ordinal))
             {
                 var eventIdText = aiEventAccept["ai:accept:event:".Length..];
-                if (ObjectId.TryParse(eventIdText, out var eventId))
+                if (ObjectId.TryParse(eventIdText, out var eventId) &&
+                    (await _aiEvents.GetByIdAsync(eventId, ct))?.UserId == user.Id)
                 {
                     await _aiEvents.MarkAcceptedExampleAsync(eventId, true, ct);
                     await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "ai_example_saved"), ct);
@@ -722,7 +732,8 @@ public sealed class UpdateHandler : IUpdateHandler
             else if (cq.Data is { } testAcceptData && testAcceptData.StartsWith("ai:test:accept:", StringComparison.Ordinal))
             {
                 var eventIdText = testAcceptData["ai:test:accept:".Length..];
-                if (ObjectId.TryParse(eventIdText, out var eventId))
+                if (ObjectId.TryParse(eventIdText, out var eventId) &&
+                    (await _aiEvents.GetByIdAsync(eventId, ct))?.UserId == user.Id)
                 {
                     await _aiEvents.MarkAcceptedExampleAsync(eventId, true, ct);
                     await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "ai_example_saved"), ct);
@@ -1637,7 +1648,7 @@ public sealed class UpdateHandler : IUpdateHandler
         CancellationToken ct)
     {
         var source = await _aiEvents.GetByIdAsync(sourceEventId, ct);
-        if (source is null)
+        if (source is null || source.UserId != user.Id)
         {
             await _bot.SendTextMessageAsync(chatId, _i18n.GetText(user.Lang, "error_try_again"), cancellationToken: ct);
             return;
