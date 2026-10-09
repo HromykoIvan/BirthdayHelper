@@ -9,7 +9,7 @@ namespace BirthdayBot.Infrastructure.Services;
 public static class MemoryFactParser
 {
     private static readonly Regex Statement = new(
-        @"^(?<subject>[\p{L}\p{M}'’\-]+(?:\s+[\p{L}\p{M}'’\-]+){0,2})\s+" +
+        @"^(?<subject>[\p{L}\p{M}'’\-]+(?:\s+[\p{L}\p{M}'’\-]+){0,2}?)\s+" +
         @"(?<verb>понравилась\s+идея\s+подарить|понравился\s+подарок|мечтает\s+о|" +
         @"не\s+любит|не\s+нравится|любит|обожает|увлекается|хочет|" +
         @"nie\s+lubi|uwielbia|marzy\s+o|lubi|chce|" +
