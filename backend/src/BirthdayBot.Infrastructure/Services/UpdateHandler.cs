@@ -547,6 +547,52 @@ public sealed class UpdateHandler : IUpdateHandler
                     }
                 }
             }
+            else if (cq.Data is { } variantData && variantData.StartsWith("ai:variant:", StringComparison.Ordinal))
+            {
+                var parts = variantData.Split(':');
+                if (parts.Length != 4 ||
+                    !ObjectId.TryParse(parts[3], out var variantEventId))
+                {
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
+                    return;
+                }
+
+                var style = parts[2];
+                var sourceEvent = await _aiEvents.GetByIdAsync(variantEventId, ct);
+                if (sourceEvent?.OutputVariants is null ||
+                    !sourceEvent.OutputVariants.TryGetValue(style, out var variantText) ||
+                    string.IsNullOrWhiteSpace(variantText))
+                {
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
+                    return;
+                }
+
+                var isTest = sourceEvent.EventType.StartsWith("enhance_test", StringComparison.Ordinal)
+                             || sourceEvent.EventType.StartsWith("enhance_regen", StringComparison.Ordinal)
+                             || sourceEvent.EventType.StartsWith("enhance_comment_regen", StringComparison.Ordinal);
+
+                var variantTitle = isTest
+                    ? _i18n.GetText(user.Lang, "ai_test_greeting_title")
+                    : _i18n.GetText(user.Lang, "ai_improved_title");
+
+                var variantRendered = BuildRenderedGreeting(
+                    user.Lang,
+                    variantText,
+                    sourceEvent.IsFallback,
+                    variantTitle);
+
+                var variantKeyboard = isTest
+                    ? Keyboards.TestGreetingKb(user.Lang, $"ai:test:regen:{sourceEvent.Id}", hasVariants: true)
+                    : Keyboards.ReminderGreetingActionsKb(user.Lang, sourceEvent.Id.ToString(), hasVariants: true);
+
+                await SafeEditMessageAsync(
+                    cq.Message!.Chat.Id,
+                    cq.Message.MessageId,
+                    variantRendered,
+                    ParseMode.Html,
+                    variantKeyboard,
+                    ct);
+            }
             else if (cq.Data is { } aiEventRegenerate && aiEventRegenerate.StartsWith("ai:improve:event:", StringComparison.Ordinal))
             {
                 var eventIdText = aiEventRegenerate["ai:improve:event:".Length..];
@@ -604,7 +650,7 @@ public sealed class UpdateHandler : IUpdateHandler
 
                     var zone = _tzdb[user.Timezone];
                     var today = SystemClock.Instance.GetCurrentInstant().InZone(zone).Date;
-                    var (_, age) = DateHelpers.NextBirthday(today, entry.Date);
+                    var (_, age) = DateHelpers.NextBirthdayOptionalAge(today, entry.Date, entry.HasKnownBirthYear);
                     var draft = _greetings.GeneratePersonalized(user, entry, age);
                     var improveSw = Stopwatch.StartNew();
                     var improved = await _enhancer.EnhanceAsync(user, entry, draft, age, ct);
@@ -618,10 +664,13 @@ public sealed class UpdateHandler : IUpdateHandler
                         EventType = "enhance",
                         InputText = draft,
                         OutputText = improved.Text,
+                        OutputVariants = ToVariantDictionary(improved),
                         IsFallback = improved.IsFallback,
                         FallbackReason = improved.FallbackReason,
                         PromptVersion = improved.PromptVersion,
                         ModelSource = improved.ModelSource,
+                        InputTokens = improved.InputTokens,
+                        OutputTokens = improved.OutputTokens,
                         LatencyMs = improveSw.Elapsed.TotalMilliseconds
                     }, ct);
 
@@ -631,7 +680,10 @@ public sealed class UpdateHandler : IUpdateHandler
                         cq.Message.MessageId,
                         text,
                         ParseMode.Html,
-                        Keyboards.ReminderGreetingActionsKb(user.Lang, aiEvent.Id.ToString()),
+                        Keyboards.ReminderGreetingActionsKb(
+                            user.Lang,
+                            aiEvent.Id.ToString(),
+                            improved.Variants is { Count: > 0 }),
                         ct);
                 }
             }
@@ -1470,12 +1522,12 @@ public sealed class UpdateHandler : IUpdateHandler
             UserId = user.Id,
             Name = fullName,
             Date = DateOnly.FromDateTime(DateTime.UtcNow),
-            Relation = "test"
+            BirthYearKnown = false
         };
 
         var draft = BuildGreetingPreviewDraft(user.Lang, previewBirthday.FullName, occasion);
         var enhanceSw = Stopwatch.StartNew();
-        var enhanced = await _enhancer.EnhanceAsync(user, previewBirthday, draft, age: 30, ct);
+        var enhanced = await _enhancer.EnhanceAsync(user, previewBirthday, draft, age: null, ct);
         enhanceSw.Stop();
 
         var aiEvent = await _aiEvents.CreateAsync(new AiEvent
@@ -1485,17 +1537,23 @@ public sealed class UpdateHandler : IUpdateHandler
             EventType = "enhance_test",
             InputText = draft,
             OutputText = enhanced.Text,
+            OutputVariants = ToVariantDictionary(enhanced),
             EntityName = fullName,
             Occasion = occasion,
             IsFallback = enhanced.IsFallback,
             FallbackReason = enhanced.FallbackReason,
             PromptVersion = enhanced.PromptVersion,
             ModelSource = enhanced.ModelSource,
+            InputTokens = enhanced.InputTokens,
+            OutputTokens = enhanced.OutputTokens,
             LatencyMs = enhanceSw.Elapsed.TotalMilliseconds
         }, ct);
 
         var finalText = BuildRenderedGreeting(user.Lang, enhanced.Text, enhanced.IsFallback, _i18n.GetText(user.Lang, "ai_test_greeting_title"));
-        var keyboard = Keyboards.TestGreetingKb(user.Lang, $"ai:test:regen:{aiEvent.Id}");
+        var keyboard = Keyboards.TestGreetingKb(
+            user.Lang,
+            $"ai:test:regen:{aiEvent.Id}",
+            enhanced.Variants is { Count: > 0 });
         if (replaceExistingMessage && messageId.HasValue)
         {
             await SafeEditMessageAsync(chatId, messageId.Value, finalText, ParseMode.Html, keyboard, ct);
@@ -1554,8 +1612,17 @@ public sealed class UpdateHandler : IUpdateHandler
             ? baseDraft
             : $"{baseDraft}\n\nAdditional user instruction: {userComment}";
 
+        int? age = null;
+        if (birthday.Id != ObjectId.Empty)
+        {
+            var zone = _tzdb[user.Timezone];
+            var today = SystemClock.Instance.GetCurrentInstant().InZone(zone).Date;
+            var (_, calculatedAge) = DateHelpers.NextBirthdayOptionalAge(today, birthday.Date, birthday.HasKnownBirthYear);
+            age = calculatedAge;
+        }
+
         var regenSw = Stopwatch.StartNew();
-        var enhanced = await _enhancer.EnhanceAsync(user, birthday, draft, age: 30, ct);
+        var enhanced = await _enhancer.EnhanceAsync(user, birthday, draft, age, ct);
         regenSw.Stop();
 
         var nextEvent = await _aiEvents.CreateAsync(new AiEvent
@@ -1567,6 +1634,7 @@ public sealed class UpdateHandler : IUpdateHandler
             EventType = string.IsNullOrWhiteSpace(userComment) ? "enhance_regen" : "enhance_comment_regen",
             InputText = draft,
             OutputText = enhanced.Text,
+            OutputVariants = ToVariantDictionary(enhanced),
             EntityName = source.EntityName ?? birthday.FullName,
             Occasion = source.Occasion,
             UserComment = userComment,
@@ -1574,6 +1642,8 @@ public sealed class UpdateHandler : IUpdateHandler
             FallbackReason = enhanced.FallbackReason,
             PromptVersion = enhanced.PromptVersion,
             ModelSource = enhanced.ModelSource,
+            InputTokens = enhanced.InputTokens,
+            OutputTokens = enhanced.OutputTokens,
             LatencyMs = regenSw.Elapsed.TotalMilliseconds
         }, ct);
 
@@ -1585,8 +1655,14 @@ public sealed class UpdateHandler : IUpdateHandler
 
         var text = BuildRenderedGreeting(user.Lang, enhanced.Text, enhanced.IsFallback, title);
         var keyboard = source.EventType.StartsWith("enhance_test", StringComparison.Ordinal)
-            ? Keyboards.TestGreetingKb(user.Lang, $"ai:test:regen:{nextEvent.Id}")
-            : Keyboards.ReminderGreetingActionsKb(user.Lang, nextEvent.Id.ToString());
+            ? Keyboards.TestGreetingKb(
+                user.Lang,
+                $"ai:test:regen:{nextEvent.Id}",
+                enhanced.Variants is { Count: > 0 })
+            : Keyboards.ReminderGreetingActionsKb(
+                user.Lang,
+                nextEvent.Id.ToString(),
+                enhanced.Variants is { Count: > 0 });
 
         if (messageId.HasValue)
         {
@@ -1616,8 +1692,24 @@ public sealed class UpdateHandler : IUpdateHandler
             UserId = user.Id,
             Name = source.EntityName ?? "Friend",
             Date = DateOnly.FromDateTime(DateTime.UtcNow),
-            Relation = "test"
+            BirthYearKnown = false
         };
+    }
+
+    private static Dictionary<string, string>? ToVariantDictionary(AiEnhanceResult result)
+    {
+        if (result.Variants is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        return result.Variants
+            .Where(x => !string.IsNullOrWhiteSpace(x.Style) && !string.IsNullOrWhiteSpace(x.Text))
+            .GroupBy(x => x.Style, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key.ToLowerInvariant(),
+                g => g.Last().Text,
+                StringComparer.OrdinalIgnoreCase);
     }
 
     private string BuildRenderedGreeting(Language lang, string text, bool isFallback, string title)
