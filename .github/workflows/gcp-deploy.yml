@@ -1,0 +1,133 @@
+name: Deploy BirthdayHelper to Google Cloud Run
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - "backend/**"
+      - "Dockerfile"
+      - "nuget.config"
+      - ".github/workflows/gcp-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: birthday-helper-production
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT_ID: birthdayhelper-511100
+  GCP_REGION: europe-central2
+  ARTIFACT_REPOSITORY: birthday-helper
+  CLOUD_RUN_SERVICE: birthday-helper
+  IMAGE_NAME: birthday-helper
+  RUNTIME_SERVICE_ACCOUNT: birthday-helper-runtime@birthdayhelper-511100.iam.gserviceaccount.com
+  SCHEDULER_JOB: birthday-helper-reminders
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: github-deployer@birthdayhelper-511100.iam.gserviceaccount.com
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Build container image
+        env:
+          IMAGE_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/${{ env.IMAGE_NAME }}
+        run: |
+          docker build             --platform linux/amd64             -f Dockerfile             -t "${IMAGE_URI}:${GITHUB_SHA}"             -t "${IMAGE_URI}:latest"             .
+
+      - name: Push container image
+        env:
+          IMAGE_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/${{ env.IMAGE_NAME }}
+        run: |
+          docker push "${IMAGE_URI}:${GITHUB_SHA}"
+          docker push "${IMAGE_URI}:latest"
+
+      - name: Deploy Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          region: ${{ env.GCP_REGION }}
+          service: ${{ env.CLOUD_RUN_SERVICE }}
+          image: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          env_vars: |-
+            ASPNETCORE_ENVIRONMENT=Production
+            Mongo__Database=birthdaybot
+            Reminder__RunAsHostedService=false
+            LocalAi__Enable=false
+            Metrics__Enable=false
+          env_vars_update_strategy: overwrite
+          secrets: |-
+            Bot__Token=birthday-helper-telegram-token:latest
+            Bot__WebhookSecretToken=birthday-helper-telegram-webhook-secret:latest
+            Mongo__ConnectionString=birthday-helper-mongodb-uri:latest
+            Scheduler__Secret=birthday-helper-scheduler-secret:latest
+          secrets_update_strategy: overwrite
+          flags: >-
+            --allow-unauthenticated
+            --service-account=${{ env.RUNTIME_SERVICE_ACCOUNT }}
+            --min-instances=0
+            --max-instances=1
+            --cpu=1
+            --memory=512Mi
+            --concurrency=20
+            --timeout=60s
+            --port=8080
+
+      - name: Verify Cloud Run health
+        env:
+          SERVICE_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          curl             --fail             --silent             --show-error             --retry 10             --retry-delay 3             --retry-all-errors             "${SERVICE_URL}/healthz"
+
+      - name: Create or update reminder scheduler
+        env:
+          SERVICE_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          SCHEDULER_SECRET="$(gcloud secrets versions access latest             --project="${GCP_PROJECT_ID}"             --secret="birthday-helper-scheduler-secret")"
+
+          if gcloud scheduler jobs describe "${SCHEDULER_JOB}"             --project="${GCP_PROJECT_ID}"             --location="${GCP_REGION}" >/dev/null 2>&1; then
+            gcloud scheduler jobs update http "${SCHEDULER_JOB}"               --project="${GCP_PROJECT_ID}"               --location="${GCP_REGION}"               --schedule="* * * * *"               --time-zone="UTC"               --uri="${SERVICE_URL}/internal/reminders/run"               --http-method="POST"               --update-headers="X-BirthdayBot-Scheduler-Secret=${SCHEDULER_SECRET}"               --attempt-deadline="60s"               --quiet
+          else
+            gcloud scheduler jobs create http "${SCHEDULER_JOB}"               --project="${GCP_PROJECT_ID}"               --location="${GCP_REGION}"               --schedule="* * * * *"               --time-zone="UTC"               --uri="${SERVICE_URL}/internal/reminders/run"               --http-method="POST"               --headers="X-BirthdayBot-Scheduler-Secret=${SCHEDULER_SECRET}"               --attempt-deadline="60s"               --quiet
+          fi
+
+      - name: Configure Telegram webhook
+        env:
+          SERVICE_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          TELEGRAM_TOKEN="$(gcloud secrets versions access latest             --project="${GCP_PROJECT_ID}"             --secret="birthday-helper-telegram-token")"
+
+          TELEGRAM_WEBHOOK_SECRET="$(gcloud secrets versions access latest             --project="${GCP_PROJECT_ID}"             --secret="birthday-helper-telegram-webhook-secret")"
+
+          RESPONSE="$(curl             --fail-with-body             --silent             --show-error             -X POST             "https://api.telegram.org/bot${TELEGRAM_TOKEN}/setWebhook"             --data-urlencode "url=${SERVICE_URL}/telegram/webhook"             --data-urlencode "secret_token=${TELEGRAM_WEBHOOK_SECRET")"
+
+          echo "${RESPONSE}" | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r.get("ok") is True, r; print(r.get("description", "Webhook configured"))'
+
+      - name: Deployment summary
+        env:
+          SERVICE_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          echo "Cloud Run URL: ${SERVICE_URL}"
+          echo "Health: ${SERVICE_URL}/healthz"
+          echo "Telegram webhook: ${SERVICE_URL}/telegram/webhook"
+          echo "Reminder scheduler: ${SCHEDULER_JOB}"
