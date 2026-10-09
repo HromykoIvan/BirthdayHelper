@@ -10,6 +10,6 @@ public interface IAiGreetingEnhancer
         User user,
         Birthday birthday,
         string draftGreeting,
-        int age,
+        int? age,
         CancellationToken ct = default);
 }
