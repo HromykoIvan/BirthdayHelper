@@ -43,6 +43,7 @@ public sealed class UpdateHandler : IUpdateHandler
     private readonly AddBirthdayWizardFlow _wizard;
     private readonly TelegramBirthdayImportService _import;
     private readonly VkImportService _vkImport;
+    private readonly PersonProfileService _profiles;
     private readonly IDateTimeZoneProvider _tzdb;
     private readonly IIntentRouter _intentRouter;
     private readonly IAiGreetingEnhancer _enhancer;
@@ -63,6 +64,7 @@ public sealed class UpdateHandler : IUpdateHandler
         AddBirthdayWizardFlow wizard,
         TelegramBirthdayImportService import,
         VkImportService vkImport,
+        PersonProfileService profiles,
         IIntentRouter intentRouter,
         IAiGreetingEnhancer enhancer,
         IGreetingGenerator greetings,
@@ -82,6 +84,7 @@ public sealed class UpdateHandler : IUpdateHandler
         _wizard = wizard;
         _import = import;
         _vkImport = vkImport;
+        _profiles = profiles;
         _intentRouter = intentRouter;
         _enhancer = enhancer;
         _greetings = greetings;
@@ -108,6 +111,13 @@ public sealed class UpdateHandler : IUpdateHandler
             var data = update.CallbackQuery?.Data;
             if (!string.IsNullOrEmpty(data))
             {
+                if (data.StartsWith("person:", StringComparison.Ordinal))
+                {
+                    var user = await EnsureUser(update.CallbackQuery!.From, ct);
+                    await _profiles.HandleCallbackAsync(user, update.CallbackQuery, ct);
+                    return;
+                }
+
                 if (data == "vk:connect")
                 {
                     var user = await EnsureUser(update.CallbackQuery!.From, ct);
@@ -232,6 +242,9 @@ public sealed class UpdateHandler : IUpdateHandler
 
         var user = await EnsureUser(msg.From!, ct);
 
+        if (await _profiles.TryHandleTextAsync(user, msg, ct))
+            return;
+
         if (!text.StartsWith("/", StringComparison.Ordinal) &&
             _aiFeedbackSessions.TryGet(chatId, out var feedbackSession))
         {
@@ -268,7 +281,7 @@ public sealed class UpdateHandler : IUpdateHandler
 
         if (text.StartsWith("/list", StringComparison.OrdinalIgnoreCase))
         {
-            await SendCurrentMonthView(user, chatId, ct);
+            await _profiles.ShowPeopleAsync(user, chatId, 0, null, ct);
             return;
         }
 
@@ -364,6 +377,11 @@ public sealed class UpdateHandler : IUpdateHandler
                         Text = "/add_birthday"
                     }
                 }, ct);
+                return;
+
+            case "menu:people":
+                await SafeAnswerCallbackQuery(cq.Id, ct: ct);
+                await _profiles.ShowPeopleAsync(user, chatId, 0, cq.Message.MessageId, ct);
                 return;
 
             case "menu:list":
@@ -1095,9 +1113,9 @@ public sealed class UpdateHandler : IUpdateHandler
         sb.AppendLine();
         sb.AppendLine(user.Lang switch
         {
-            Language.Ru => "💬 Можно просто написать: <i>«Добавь жену Татьяну, 17 января 1989, врач, любит рисовать»</i>",
-            Language.Pl => "💬 Możesz po prostu napisać: <i>„Dodaj żonę Annę, 17 stycznia 1989, lekarka, lubi malować”</i>",
-            _ => "💬 You can simply write: <i>“Add my wife Anna, January 17 1989, doctor, loves painting”</i>"
+            Language.Ru => "💬 Просто напиши: <i>«Добавь сестру Аню, 12 июня, любит путешествия»</i>. Необязательные детали можно добавить позже.",
+            Language.Pl => "💬 Napisz: <i>„Dodaj Annę, 12 czerwca, lubi podróże”</i>. Szczegóły można dodać później.",
+            _ => "💬 Just type: <i>“Add Anna, June 12, loves travel”</i>. You can add details later."
         });
 
         return sb.ToString();
