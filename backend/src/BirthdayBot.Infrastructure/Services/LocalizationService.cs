@@ -533,6 +533,18 @@ public class LocalizationService : ILocalizationService
         {(Language.Pl, "ai_use_as_example"), "✅ Użyj jako przykład"},
         {(Language.En, "ai_use_as_example"), "✅ Use as example"},
 
+        {(Language.Ru, "ai_variant_warm"), "❤️ Тёплое"},
+        {(Language.Pl, "ai_variant_warm"), "❤️ Ciepłe"},
+        {(Language.En, "ai_variant_warm"), "❤️ Warm"},
+
+        {(Language.Ru, "ai_variant_short"), "✉️ Короткое"},
+        {(Language.Pl, "ai_variant_short"), "✉️ Krótkie"},
+        {(Language.En, "ai_variant_short"), "✉️ Short"},
+
+        {(Language.Ru, "ai_variant_personal"), "✨ Личное"},
+        {(Language.Pl, "ai_variant_personal"), "✨ Osobiste"},
+        {(Language.En, "ai_variant_personal"), "✨ Personal"},
+
         {(Language.Ru, "ai_comment_prompt"), "Напишите, что изменить в поздравлении (например: сделай короче и теплее)."},
         {(Language.Pl, "ai_comment_prompt"), "Napisz, co zmienić w życzeniach (np. krócej i cieplej)."},
         {(Language.En, "ai_comment_prompt"), "Tell me what to change in the greeting (for example: shorter and warmer)."},
