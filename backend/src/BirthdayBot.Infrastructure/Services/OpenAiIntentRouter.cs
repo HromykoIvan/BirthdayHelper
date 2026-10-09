@@ -67,8 +67,7 @@ public sealed class OpenAiIntentRouter : IIntentRouter
             "notes",
             "confidence",
             "requires_confirmation")
-    }
-};
+    };
 
     private readonly OpenAiResponsesClient _client;
     private readonly LocalIntentRouter _fallback;
