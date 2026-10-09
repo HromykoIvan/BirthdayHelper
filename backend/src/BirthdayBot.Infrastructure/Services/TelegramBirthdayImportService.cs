@@ -3,6 +3,7 @@ using System.Text;
 using BirthdayBot.Application.Services;
 using BirthdayBot.Application.UI;
 using BirthdayBot.Domain.Entities;
+using User = BirthdayBot.Domain.Entities.User;
 using BirthdayBot.Domain.Enums;
 using BirthdayBot.Infrastructure.Mongo;
 using Microsoft.Extensions.Logging;
