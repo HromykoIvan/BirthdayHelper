@@ -78,6 +78,11 @@ jobs:
             OpenAi__IntentModel=gpt-6-luna
             OpenAi__GreetingModel=gpt-6-luna
             OpenAi__MaxOutputTokens=900
+            VkImport__Enabled=${{ vars.VK_ID_CLIENT_ID != '' }}
+            VkImport__ClientId=${{ vars.VK_ID_CLIENT_ID }}
+            VkImport__RedirectUri=https://birthday-helper-kqxrqpdkya-lm.a.run.app/integrations/vk/callback
+            VkImport__Scope=friends
+            VkImport__ApiVersion=5.199
           env_vars_update_strategy: overwrite
           secrets: |-
             Bot__Token=birthday-helper-telegram-token:latest
