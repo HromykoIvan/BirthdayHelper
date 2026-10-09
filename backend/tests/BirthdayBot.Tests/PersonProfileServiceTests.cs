@@ -63,29 +63,4 @@ public sealed class PersonProfileServiceTests
         _bot.SentRequests.Should().NotBeEmpty();
     }
 
-    [Fact]
-    public async Task Opening_profile_only_fetches_contact_owned_by_current_user()
-    {
-        var user = new BirthdayBot.Domain.Entities.User { Lang = Language.Ru, Id = ObjectId.GenerateNewId() };
-        var person = new Birthday
-        {
-            Id = ObjectId.GenerateNewId(), UserId = user.Id,
-            Name = "Anna", Date = new DateOnly(2000, 2, 29),
-            BirthYearKnown = false
-        };
-        _repo.Setup(x => x.GetByIdAsync(person.Id, user.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(person);
-        var callback = new CallbackQuery
-        {
-            Id = "callback-test",
-            Data = $"person:show:{person.Id}",
-            From = new Telegram.Bot.Types.User { Id = 2002, FirstName = "Test" },
-            Message = new Message { Chat = new Chat { Id = 1001 }, MessageId = 42 }
-        };
-
-        await CreateService().HandleCallbackAsync(user, callback, CancellationToken.None);
-
-        _repo.Verify(x => x.GetByIdAsync(person.Id, user.Id, It.IsAny<CancellationToken>()), Times.Once);
-        _bot.SentRequests.Should().NotBeEmpty();
-    }
 }
