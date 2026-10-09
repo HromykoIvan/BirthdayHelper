@@ -41,6 +41,7 @@ public sealed class UpdateHandler : IUpdateHandler
     private readonly ILocalizationService _i18n;
     private readonly IUpcomingService _upcoming;
     private readonly AddBirthdayWizardFlow _wizard;
+    private readonly TelegramBirthdayImportService _import;
     private readonly IDateTimeZoneProvider _tzdb;
     private readonly IIntentRouter _intentRouter;
     private readonly IAiGreetingEnhancer _enhancer;
@@ -59,6 +60,7 @@ public sealed class UpdateHandler : IUpdateHandler
         ILocalizationService i18n,
         IUpcomingService upcoming,
         AddBirthdayWizardFlow wizard,
+        TelegramBirthdayImportService import,
         IIntentRouter intentRouter,
         IAiGreetingEnhancer enhancer,
         IGreetingGenerator greetings,
@@ -76,6 +78,7 @@ public sealed class UpdateHandler : IUpdateHandler
         _i18n = i18n;
         _upcoming = upcoming;
         _wizard = wizard;
+        _import = import;
         _intentRouter = intentRouter;
         _enhancer = enhancer;
         _greetings = greetings;
@@ -102,6 +105,13 @@ public sealed class UpdateHandler : IUpdateHandler
             var data = update.CallbackQuery?.Data;
             if (!string.IsNullOrEmpty(data))
             {
+                if (data.StartsWith("import:", StringComparison.Ordinal))
+                {
+                    var user = await EnsureUser(update.CallbackQuery!.From, ct);
+                    await _import.HandleCallbackAsync(user, update.CallbackQuery, ct);
+                    return;
+                }
+
                 if (data.StartsWith("lang:", StringComparison.Ordinal))
                 {
                     await HandleLanguageSelectionAsync(update, data, ct);
@@ -143,6 +153,18 @@ public sealed class UpdateHandler : IUpdateHandler
             // 2) Text commands / messages
             switch (update.Type)
             {
+                case UpdateType.Message when update.Message!.Document is not null:
+                    var docMessage = update.Message!;
+                    if (docMessage.From is not null &&
+                        _userRateLimiter.IsAllowed(docMessage.From.Id))
+                    {
+                        var docUser = await EnsureUser(docMessage.From, ct);
+                        await _import.HandleDocumentAsync(
+                            docUser, docMessage.Chat.Id, docMessage.From.Id,
+                            docMessage.Document!, ct);
+                    }
+                    break;
+
                 case UpdateType.Message when update.Message!.Text is not null:
                     await HandleTextMessageAsync(update.Message!, ct);
                     break;
@@ -225,6 +247,12 @@ public sealed class UpdateHandler : IUpdateHandler
                     Text = text
                 } 
             }, ct);
+            return;
+        }
+
+        if (text.StartsWith("/import", StringComparison.OrdinalIgnoreCase))
+        {
+            await _import.ShowInstructionsAsync(user, chatId, ct);
             return;
         }
 
@@ -331,6 +359,11 @@ public sealed class UpdateHandler : IUpdateHandler
             case "menu:list":
                 await SafeAnswerCallbackQuery(cq.Id, ct: ct);
                 await SendCurrentMonthView(user, chatId, ct);
+                return;
+
+            case "menu:import":
+                await SafeAnswerCallbackQuery(cq.Id, ct: ct);
+                await _import.ShowInstructionsAsync(user, chatId, ct);
                 return;
 
             case "menu:settings":
