@@ -33,7 +33,7 @@ public sealed class LocalAiGreetingEnhancer : IAiGreetingEnhancer
         _logger = logger;
     }
 
-    public async Task<AiEnhanceResult> EnhanceAsync(User user, Birthday birthday, string draftGreeting, int age, CancellationToken ct = default)
+    public async Task<AiEnhanceResult> EnhanceAsync(User user, Birthday birthday, string draftGreeting, int? age, CancellationToken ct = default)
     {
         var sw = Stopwatch.StartNew();
         var source = _options.UseOllama ? "ollama" : "local-template";
@@ -128,7 +128,7 @@ public sealed class LocalAiGreetingEnhancer : IAiGreetingEnhancer
         }
     }
 
-    private static string BuildPersonalizedDraft(User user, Birthday birthday, string draftGreeting, int age)
+    private static string BuildPersonalizedDraft(User user, Birthday birthday, string draftGreeting, int? age)
     {
         var sb = new StringBuilder();
         sb.AppendLine(draftGreeting);
@@ -148,9 +148,19 @@ public sealed class LocalAiGreetingEnhancer : IAiGreetingEnhancer
         {
             sb.AppendLine(user.Lang switch
             {
-                Language.Ru => $"Добавь что-то про интересы: {birthday.Interests}.",
-                Language.Pl => $"Dodaj nawiązanie do zainteresowań: {birthday.Interests}.",
-                _ => $"Mention interests: {birthday.Interests}."
+                Language.Ru => $"Можно естественно упомянуть интересы: {birthday.Interests}.",
+                Language.Pl => $"Możesz naturalnie nawiązać do zainteresowań: {birthday.Interests}.",
+                _ => $"You may naturally mention interests: {birthday.Interests}."
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(birthday.Profession))
+        {
+            sb.AppendLine(user.Lang switch
+            {
+                Language.Ru => $"Профессия/роль: {birthday.Profession}. Используй только если это звучит естественно.",
+                Language.Pl => $"Zawód/rola: {birthday.Profession}. Użyj tylko, jeśli brzmi to naturalnie.",
+                _ => $"Profession/role: {birthday.Profession}. Use only when it sounds natural."
             });
         }
 
@@ -167,7 +177,7 @@ public sealed class LocalAiGreetingEnhancer : IAiGreetingEnhancer
         return sb.ToString().Trim();
     }
 
-    private static string BuildPrompt(Language lang, Birthday birthday, string draft, int age, string promptVersion, string[] acceptedExamples)
+    private static string BuildPrompt(Language lang, Birthday birthday, string draft, int? age, string promptVersion, string[] acceptedExamples)
     {
         var localeHint = lang switch
         {
@@ -187,11 +197,13 @@ public sealed class LocalAiGreetingEnhancer : IAiGreetingEnhancer
         - Keep language: {localeHint}
         - Keep tone warm and concise (2-4 sentences)
         - Mention recipient by name
-        - Keep age reference ({age})
+        - Mention age only when it is known and useful; never invent it
         - Do not add unsafe or sensitive content
 
         Recipient name: {birthday.FullName}
+        Age: {(age.HasValue ? age.Value.ToString() : "unknown")}
         Relation: {birthday.Relation ?? "unknown"}
+        Profession: {birthday.Profession ?? "n/a"}
         Interests: {birthday.Interests ?? "n/a"}
         Notes: {birthday.Notes ?? "n/a"}
 
