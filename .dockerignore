@@ -12,3 +12,5 @@
 deploy
 tests
 *.md
+# google-github-actions/auth generated credentials
+gha-creds-*.json
