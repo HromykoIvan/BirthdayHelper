@@ -51,8 +51,7 @@ jobs:
       - name: Build container image
         env:
           IMAGE_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/${{ env.IMAGE_NAME }}
-        run: |
-          docker build             --platform linux/amd64             -f Dockerfile             -t "${IMAGE_URI}:${GITHUB_SHA}"             -t "${IMAGE_URI}:latest"             .
+        run: docker build --platform linux/amd64 -f Dockerfile -t "${IMAGE_URI}:${GITHUB_SHA}" -t "${IMAGE_URI}:latest" .
 
       - name: Push container image
         env:
@@ -96,30 +95,28 @@ jobs:
       - name: Verify Cloud Run health
         env:
           SERVICE_URL: ${{ steps.deploy.outputs.url }}
-        run: |
-          curl             --fail             --silent             --show-error             --retry 10             --retry-delay 3             --retry-all-errors             "${SERVICE_URL}/healthz"
+        run: curl --fail --silent --show-error --retry 10 --retry-delay 3 --retry-all-errors "${SERVICE_URL}/healthz"
 
       - name: Create or update reminder scheduler
         env:
           SERVICE_URL: ${{ steps.deploy.outputs.url }}
         run: |
-          SCHEDULER_SECRET="$(gcloud secrets versions access latest             --project="${GCP_PROJECT_ID}"             --secret="birthday-helper-scheduler-secret")"
+          SCHEDULER_SECRET="$(gcloud secrets versions access latest --project="${GCP_PROJECT_ID}" --secret="birthday-helper-scheduler-secret")"
 
-          if gcloud scheduler jobs describe "${SCHEDULER_JOB}"             --project="${GCP_PROJECT_ID}"             --location="${GCP_REGION}" >/dev/null 2>&1; then
-            gcloud scheduler jobs update http "${SCHEDULER_JOB}"               --project="${GCP_PROJECT_ID}"               --location="${GCP_REGION}"               --schedule="* * * * *"               --time-zone="UTC"               --uri="${SERVICE_URL}/internal/reminders/run"               --http-method="POST"               --update-headers="X-BirthdayBot-Scheduler-Secret=${SCHEDULER_SECRET}"               --attempt-deadline="60s"               --quiet
+          if gcloud scheduler jobs describe "${SCHEDULER_JOB}" --project="${GCP_PROJECT_ID}" --location="${GCP_REGION}" >/dev/null 2>&1; then
+            gcloud scheduler jobs update http "${SCHEDULER_JOB}" --project="${GCP_PROJECT_ID}" --location="${GCP_REGION}" --schedule="* * * * *" --time-zone="UTC" --uri="${SERVICE_URL}/internal/reminders/run" --http-method="POST" --update-headers="X-BirthdayBot-Scheduler-Secret=${SCHEDULER_SECRET}" --attempt-deadline="60s" --quiet
           else
-            gcloud scheduler jobs create http "${SCHEDULER_JOB}"               --project="${GCP_PROJECT_ID}"               --location="${GCP_REGION}"               --schedule="* * * * *"               --time-zone="UTC"               --uri="${SERVICE_URL}/internal/reminders/run"               --http-method="POST"               --headers="X-BirthdayBot-Scheduler-Secret=${SCHEDULER_SECRET}"               --attempt-deadline="60s"               --quiet
+            gcloud scheduler jobs create http "${SCHEDULER_JOB}" --project="${GCP_PROJECT_ID}" --location="${GCP_REGION}" --schedule="* * * * *" --time-zone="UTC" --uri="${SERVICE_URL}/internal/reminders/run" --http-method="POST" --headers="X-BirthdayBot-Scheduler-Secret=${SCHEDULER_SECRET}" --attempt-deadline="60s" --quiet
           fi
 
       - name: Configure Telegram webhook
         env:
           SERVICE_URL: ${{ steps.deploy.outputs.url }}
         run: |
-          TELEGRAM_TOKEN="$(gcloud secrets versions access latest             --project="${GCP_PROJECT_ID}"             --secret="birthday-helper-telegram-token")"
+          TELEGRAM_TOKEN="$(gcloud secrets versions access latest --project="${GCP_PROJECT_ID}" --secret="birthday-helper-telegram-token")"
+          TELEGRAM_WEBHOOK_SECRET="$(gcloud secrets versions access latest --project="${GCP_PROJECT_ID}" --secret="birthday-helper-telegram-webhook-secret")"
 
-          TELEGRAM_WEBHOOK_SECRET="$(gcloud secrets versions access latest             --project="${GCP_PROJECT_ID}"             --secret="birthday-helper-telegram-webhook-secret")"
-
-          RESPONSE="$(curl             --fail-with-body             --silent             --show-error             -X POST             "https://api.telegram.org/bot${TELEGRAM_TOKEN}/setWebhook"             --data-urlencode "url=${SERVICE_URL}/telegram/webhook"             --data-urlencode "secret_token=${TELEGRAM_WEBHOOK_SECRET")"
+          RESPONSE="$(curl --fail-with-body --silent --show-error -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/setWebhook" --data-urlencode "url=${SERVICE_URL}/telegram/webhook" --data-urlencode "secret_token=${TELEGRAM_WEBHOOK_SECRET}")"
 
           echo "${RESPONSE}" | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r.get("ok") is True, r; print(r.get("description", "Webhook configured"))'
 
