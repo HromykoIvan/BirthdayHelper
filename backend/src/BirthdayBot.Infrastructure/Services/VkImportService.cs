@@ -123,7 +123,7 @@ public sealed class VkImportService
 
         // Atomically consume state: prevents callback replay or parallel imports.
         var session = await _states.FindOneAndDeleteAsync(x =>
-            x.State == state && x.ExpiresAtUtc > DateTime.UtcNow, ct);
+            x.State == state && x.ExpiresAtUtc > DateTime.UtcNow, cancellationToken: ct);
         if (session is null)
             return false;
 
