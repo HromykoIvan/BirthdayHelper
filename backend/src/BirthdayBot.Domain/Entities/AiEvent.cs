@@ -44,6 +44,9 @@ public sealed class AiEvent
 
     public double? LatencyMs { get; set; }
 
+    public int? InputTokens { get; set; }
+    public int? OutputTokens { get; set; }
+
     public bool IsAcceptedExample { get; set; }
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
