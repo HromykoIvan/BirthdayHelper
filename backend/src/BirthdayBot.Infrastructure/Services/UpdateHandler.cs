@@ -44,6 +44,7 @@ public sealed class UpdateHandler : IUpdateHandler
     private readonly TelegramBirthdayImportService _import;
     private readonly VkImportService _vkImport;
     private readonly PersonProfileService _profiles;
+    private readonly SmartMemoryService _smartMemory;
     private readonly IConversationSessionStore _addSessions;
     private readonly IDateTimeZoneProvider _tzdb;
     private readonly IIntentRouter _intentRouter;
@@ -66,6 +67,7 @@ public sealed class UpdateHandler : IUpdateHandler
         TelegramBirthdayImportService import,
         VkImportService vkImport,
         PersonProfileService profiles,
+        SmartMemoryService smartMemory,
         IConversationSessionStore addSessions,
         IIntentRouter intentRouter,
         IAiGreetingEnhancer enhancer,
@@ -87,6 +89,7 @@ public sealed class UpdateHandler : IUpdateHandler
         _import = import;
         _vkImport = vkImport;
         _profiles = profiles;
+        _smartMemory = smartMemory;
         _addSessions = addSessions;
         _intentRouter = intentRouter;
         _enhancer = enhancer;
@@ -114,6 +117,18 @@ public sealed class UpdateHandler : IUpdateHandler
             var data = update.CallbackQuery?.Data;
             if (!string.IsNullOrEmpty(data))
             {
+                if (data.StartsWith("memory:", StringComparison.Ordinal))
+                {
+                    var user = await EnsureUser(update.CallbackQuery!.From, ct);
+                    await _smartMemory.HandleCallbackAsync(user, update.CallbackQuery, ct);
+                    return;
+                }
+
+                // Any other navigation cancels an unconfirmed memory suggestion.
+                if (update.CallbackQuery?.Message is not null)
+                    await _smartMemory.CancelPendingAsync(update.CallbackQuery.Message.Chat.Id,
+                        update.CallbackQuery.From.Id, ct);
+
                 if (data.StartsWith("person:", StringComparison.Ordinal))
                 {
                     var user = await EnsureUser(update.CallbackQuery!.From, ct);
@@ -252,6 +267,7 @@ public sealed class UpdateHandler : IUpdateHandler
         {
             _addSessions.Remove(chatId);
             await _profiles.CancelPendingAsync(chatId, msg.From!.Id, ct);
+            await _smartMemory.CancelPendingAsync(chatId, msg.From.Id, ct);
         }
 
         if (await _profiles.TryHandleTextAsync(user, msg, ct))
@@ -331,6 +347,11 @@ public sealed class UpdateHandler : IUpdateHandler
             return;
         }
 
+        // Recognize volunteered facts at no AI cost, but save only on explicit confirmation.
+        if (!text.StartsWith("/", StringComparison.Ordinal) &&
+            await _smartMemory.TryOfferAsync(user, msg, ct))
+            return;
+
         // AI/local intent router for free text commands.
         if (await TryHandleIntentAsync(user, msg.From!, chatId, text, ct))
             return;
@@ -368,6 +389,7 @@ public sealed class UpdateHandler : IUpdateHandler
         var user = await EnsureUser(cq.From, ct);
         _addSessions.Remove(chatId);
         await _profiles.CancelPendingAsync(chatId, cq.From.Id, ct);
+        await _smartMemory.CancelPendingAsync(chatId, cq.From.Id, ct);
 
         switch (data)
         {
@@ -1127,9 +1149,9 @@ public sealed class UpdateHandler : IUpdateHandler
         sb.AppendLine();
         sb.AppendLine(user.Lang switch
         {
-            Language.Ru => "💬 Просто напиши: <i>«Добавь сестру Аню, 12 июня, любит путешествия»</i>. Необязательные детали можно добавить позже.",
-            Language.Pl => "💬 Napisz: <i>„Dodaj Annę, 12 czerwca, lubi podróże”</i>. Szczegóły można dodać później.",
-            _ => "💬 Just type: <i>“Add Anna, June 12, loves travel”</i>. You can add details later."
+            Language.Ru => "💬 Просто напиши: <i>«Добавь Аню, 12 июня»</i> или <i>«Аня любит путешествия»</i>. Факты сохраню только после подтверждения.",
+            Language.Pl => "💬 Napisz: <i>„Dodaj Annę, 12 czerwca”</i> lub <i>„Anna lubi podróże”</i>. Zapiszę po potwierdzeniu.",
+            _ => "💬 Just type: <i>“Add Anna, June 12”</i> or <i>“Anna loves travel”</i>. I’ll ask before saving details."
         });
 
         return sb.ToString();

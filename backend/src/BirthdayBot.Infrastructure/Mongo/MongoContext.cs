@@ -27,6 +27,8 @@ public class MongoContext
         Database.GetCollection<AiFeedbackSessionDocument>("ai_feedback_sessions");
     public IMongoCollection<BirthdayImportSessionDocument> ImportSessions =>
         Database.GetCollection<BirthdayImportSessionDocument>("birthday_import_sessions");
+    public IMongoCollection<MemoryFactSessionDocument> MemoryFactSessions =>
+        Database.GetCollection<MemoryFactSessionDocument>("memory_fact_sessions");
     public IMongoCollection<PersonProfileSessionDocument> PersonProfileSessions =>
         Database.GetCollection<PersonProfileSessionDocument>("person_profile_sessions");
     public IMongoCollection<VkAuthorizationSessionDocument> VkAuthorizationSessions =>
@@ -155,6 +157,11 @@ public class MongoContext
                 Builders<PersonProfileSessionDocument>.IndexKeys.Ascending(x => x.ExpiresAtUtc),
                 new CreateIndexOptions { Name = "ttl_person_profile_sessions", ExpireAfter = TimeSpan.Zero });
             await PersonProfileSessions.Indexes.CreateOneAsync(peopleSessionTtl, cancellationToken: ct);
+
+            var memoryFactTtl = new CreateIndexModel<MemoryFactSessionDocument>(
+                Builders<MemoryFactSessionDocument>.IndexKeys.Ascending(x => x.ExpiresAtUtc),
+                new CreateIndexOptions { Name = "ttl_memory_fact_sessions", ExpireAfter = TimeSpan.Zero });
+            await MemoryFactSessions.Indexes.CreateOneAsync(memoryFactTtl, cancellationToken: ct);
 
             _indexesEnsured = true;
             _logger.LogInformation("MongoDB indexes are ensured.");
