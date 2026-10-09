@@ -291,8 +291,7 @@ public sealed class UpdateHandler : IUpdateHandler
         {
             case "menu:home":
                 var homeUser = await EnsureUser(cq.From, ct);
-                var homeName = Formatting.Html(cq.From.FirstName ?? "");
-                var homeWelcomeText = string.Format(_i18n.GetText(homeUser.Lang, "welcome"), homeName);
+                var homeWelcomeText = await BuildHomeTextAsync(homeUser, cq.From.FirstName ?? "", ct);
                 await SafeEditMessageAsync(chatId, cq.Message.MessageId,
                     homeWelcomeText,
                     ParseMode.Html, Keyboards.MainMenuKb(homeUser.Lang), ct);
@@ -943,14 +942,58 @@ public sealed class UpdateHandler : IUpdateHandler
     /// <summary>Sends the main menu with a welcome message.</summary>
     private async Task SendMainMenu(long chatId, Telegram.Bot.Types.User tgUser, BirthdayBot.Domain.Entities.User user, CancellationToken ct)
     {
-        var name = Formatting.Html(tgUser.FirstName ?? "");
-        var welcomeText = string.Format(_i18n.GetText(user.Lang, "welcome"), name);
-        
+        var welcomeText = await BuildHomeTextAsync(user, tgUser.FirstName ?? "", ct);
+
         await _bot.SendTextMessageAsync(chatId,
             welcomeText,
             parseMode: ParseMode.Html,
             replyMarkup: Keyboards.MainMenuKb(user.Lang),
             cancellationToken: ct);
+    }
+
+    private async Task<string> BuildHomeTextAsync(
+        BirthdayBot.Domain.Entities.User user,
+        string telegramFirstName,
+        CancellationToken ct)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(string.Format(
+            _i18n.GetText(user.Lang, "welcome"),
+            Formatting.Html(telegramFirstName)));
+
+        var entries = await _birthdays.ListByUserAsync(user.Id, ct);
+        if (entries.Count > 0 && _tzdb.Ids.Contains(user.Timezone))
+        {
+            var zone = _tzdb[user.Timezone];
+            var today = SystemClock.Instance.GetCurrentInstant().InZone(zone).Date;
+            var upcoming = BuildBirthdayRows(entries, today).Take(3).ToArray();
+
+            sb.AppendLine();
+            sb.AppendLine(user.Lang switch
+            {
+                Language.Ru => "🎂 <b>Ближайшие:</b>",
+                Language.Pl => "🎂 <b>Najbliższe:</b>",
+                _ => "🎂 <b>Coming up:</b>"
+            });
+
+            foreach (var item in upcoming)
+            {
+                var days = Period.Between(today, item.NextDate, PeriodUnits.Days).Days;
+                sb.AppendLine(
+                    $"• <b>{Formatting.Html(item.Birthday.FullName)}</b> — " +
+                    $"{item.NextDate.Day:D2}.{item.NextDate.Month:D2} · {FormatDaysUntil(user.Lang, days)}");
+            }
+        }
+
+        sb.AppendLine();
+        sb.AppendLine(user.Lang switch
+        {
+            Language.Ru => "💬 Можно просто написать: <i>«Добавь жену Татьяну, 17 января 1989, врач, любит рисовать»</i>",
+            Language.Pl => "💬 Możesz po prostu napisać: <i>„Dodaj żonę Annę, 17 stycznia 1989, lekarka, lubi malować”</i>",
+            _ => "💬 You can simply write: <i>“Add my wife Anna, January 17 1989, doctor, loves painting”</i>"
+        });
+
+        return sb.ToString();
     }
 
     /// <summary>Sends language selection for new users.</summary>
