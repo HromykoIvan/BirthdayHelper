@@ -143,6 +143,7 @@ public sealed class ReminderService : IReminderService
             return;
         }
 
+        var sendAttempted = false;
         try
         {
             var when = FormatWhen(user.Lang, daysBefore);
@@ -197,6 +198,9 @@ public sealed class ReminderService : IReminderService
                     enhanced.Variants is { Count: > 0 });
             }
 
+            // Once a Telegram send is attempted, the result may be ambiguous on timeout.
+            // Keep the unique reservation to avoid sending a possible duplicate on Scheduler retry.
+            sendAttempted = true;
             var sent = await _bot.SendTextMessageAsync(
                 chatId: user.TelegramUserId,
                 text: message,
@@ -211,11 +215,33 @@ public sealed class ReminderService : IReminderService
         }
         catch (Exception ex)
         {
-            // Delete the reservation so the Scheduler retry can attempt the delivery again.
-            await _logs.DeleteAsync(delivery.Id, CancellationToken.None);
+            if (!sendAttempted)
+            {
+                // No Telegram request was made; it is safe to retry later.
+                await _logs.DeleteAsync(delivery.Id, CancellationToken.None);
+            }
+            else
+            {
+                // The HTTP request might have reached Telegram. Prefer no duplicate over
+                // automatic retry; support can inspect the delivery log and retry manually.
+                try
+                {
+                    await _logs.UpdateStatusAsync(
+                        delivery.Id,
+                        status: "Uncertain",
+                        error: "Telegram delivery or status update failed; manual review required",
+                        ct: CancellationToken.None);
+                }
+                catch (Exception logError)
+                {
+                    _logger.LogWarning(logError, "Failed to mark uncertain reminder {DeliveryKey}.", delivery.DeliveryKey);
+                }
+            }
+
             _logger.LogWarning(
                 ex,
-                "Reminder delivery failed; reservation {DeliveryKey} was released for retry.",
+                "Reminder delivery failed, TelegramAttempted={TelegramAttempted}, key {DeliveryKey}.",
+                sendAttempted,
                 delivery.DeliveryKey);
             throw;
         }
