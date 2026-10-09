@@ -262,8 +262,8 @@ public class AddBirthdayWizardFlowTests
 
         _storeMock.Verify(s => s.Upsert(
             It.Is<AddBirthdayWizardSession>(ss =>
-                ss.Step == AddWizardStep.Confirm &&
-                ss.Date == new DateOnly(1990, 3, 15)),
+                ss.Step == AddWizardStep.Confirm && ss.BirthYearKnown == false &&
+                ss.Date == new DateOnly(2000, 3, 15)),
             It.IsAny<TimeSpan?>()), Times.AtLeastOnce);
     }
 
