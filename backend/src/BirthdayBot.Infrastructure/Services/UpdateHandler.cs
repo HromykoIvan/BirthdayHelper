@@ -476,7 +476,43 @@ public sealed class UpdateHandler : IUpdateHandler
 
         try
         {
-            if (cq.Data is { } data && data.StartsWith("delete:list:", StringComparison.Ordinal))
+            if (cq.Data is { } recipientData &&
+                recipientData.StartsWith("greet:person:", StringComparison.Ordinal))
+            {
+                var parts = recipientData.Split(':');
+                if (parts.Length != 4 || !ObjectId.TryParse(parts[3], out var recipientId))
+                {
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "error_try_again"), ct);
+                    return;
+                }
+
+                var savedRecipient = await _birthdays.GetByIdAsync(recipientId, user.Id, ct);
+                if (savedRecipient is null)
+                {
+                    await SafeAnswerCallbackQuery(cq.Id, _i18n.GetText(user.Lang, "entry_not_found"), ct);
+                    return;
+                }
+
+                await SafeAnswerCallbackQuery(cq.Id, ct: ct);
+                await GenerateGreetingPreviewAsync(
+                    user, cq.Message!.Chat.Id, messageId: null,
+                    savedRecipient.FullName, "birthday",
+                    replaceExistingMessage: false, ct: ct,
+                    storedBirthday: savedRecipient,
+                    requestedRelation: parts[2] == "none" ? null : parts[2]);
+                return;
+            }
+            else if (cq.Data == "greet:cancel")
+            {
+                await SafeAnswerCallbackQuery(cq.Id, ct: ct);
+                await _bot.SendTextMessageAsync(
+                    cq.Message!.Chat.Id,
+                    _i18n.GetText(user.Lang, "wizard_next_action"),
+                    replyMarkup: Keyboards.MainMenuKb(user.Lang),
+                    cancellationToken: ct);
+                return;
+            }
+            else if (cq.Data is { } data && data.StartsWith("delete:list:", StringComparison.Ordinal))
             {
                 var pageText = data["delete:list:".Length..];
                 var page = int.TryParse(pageText, out var parsedPage) ? parsedPage : 0;
@@ -1541,15 +1577,10 @@ public sealed class UpdateHandler : IUpdateHandler
                 return true;
 
             case UserIntentType.GenerateGreetingPreview when !string.IsNullOrWhiteSpace(intent.EntityName):
-                var occasion = string.IsNullOrWhiteSpace(intent.Occasion) ? "особый день" : intent.Occasion.Trim();
-                await GenerateGreetingPreviewAsync(
-                    user,
-                    chatId,
-                    messageId: null,
-                    intent.EntityName.Trim(),
-                    occasion,
-                    replaceExistingMessage: false,
-                    ct: ct);
+                await HandleGreetingRequestAsync(
+                    user, chatId, intent.EntityName.Trim(),
+                    string.IsNullOrWhiteSpace(intent.Occasion) ? "birthday" : intent.Occasion.Trim(),
+                    ct);
                 return true;
 
             case UserIntentType.UpdateSettings when intent.Settings is not null:
@@ -1562,6 +1593,83 @@ public sealed class UpdateHandler : IUpdateHandler
         }
     }
 
+    private async Task HandleGreetingRequestAsync(
+        BirthdayBot.Domain.Entities.User user,
+        long chatId,
+        string recipientQuery,
+        string occasion,
+        CancellationToken ct)
+    {
+        var all = await _birthdays.ListByUserAsync(user.Id, ct);
+        var matches = BirthdayRecipientMatcher.FindMatches(all, recipientQuery);
+        var relationship = BirthdayRecipientMatcher.GetRelationshipKey(recipientQuery);
+
+        if (matches.Count == 1)
+        {
+            var recipient = matches[0];
+            await GenerateGreetingPreviewAsync(
+                user, chatId, messageId: null,
+                recipient.FullName, occasion,
+                replaceExistingMessage: false, ct: ct,
+                storedBirthday: recipient, requestedRelation: relationship);
+            return;
+        }
+
+        if (matches.Count > 1 || relationship is not null)
+        {
+            // A general "Family" tag is not enough to identify a person's mother.
+            // Always ask the user rather than guessing among unrelated contacts.
+            var candidates = matches.Count > 0 ? matches : all;
+            if (candidates.Count == 0)
+            {
+                await _bot.SendTextMessageAsync(
+                    chatId,
+                    user.Lang switch
+                    {
+                        Language.Ru => "У меня пока нет записей о близких. Добавь день рождения мамы — можно одной фразой.",
+                        Language.Pl => "Nie mam jeszcze zapisanych osób. Dodaj urodziny mamy jednym zdaniem.",
+                        _ => "You don't have any saved birthdays yet. Add your mother's birthday in one message."
+                    },
+                    replyMarkup: Keyboards.MainMenuKb(user.Lang),
+                    cancellationToken: ct);
+                return;
+            }
+
+            var heading = user.Lang switch
+            {
+                Language.Ru => $"Кого ты имеешь в виду под «{Formatting.Html(recipientQuery)}»? Выбери человека:",
+                Language.Pl => $"Kogo masz na myśli, mówiąc „{Formatting.Html(recipientQuery)}”? Wybierz osobę:",
+                _ => $"Who do you mean by “{Formatting.Html(recipientQuery)}”? Choose a person:"
+            };
+
+            var relationKey = relationship ?? "none";
+            var buttons = candidates.Take(12).Select(person => new[]
+            {
+                InlineKeyboardButton.WithCallbackData(
+                    $"{person.FullName} — {FormatBirthdayDate(person)}",
+                    $"greet:person:{relationKey}:{person.Id}")
+            }).ToList();
+            buttons.Add(new[]
+            {
+                InlineKeyboardButton.WithCallbackData(
+                    _i18n.GetText(user.Lang, "cancel"), "greet:cancel")
+            });
+
+            await _bot.SendTextMessageAsync(
+                chatId, heading,
+                parseMode: ParseMode.Html,
+                replyMarkup: new InlineKeyboardMarkup(buttons),
+                cancellationToken: ct);
+            return;
+        }
+
+        // A named recipient not in the database can still receive a generic greeting.
+        await GenerateGreetingPreviewAsync(
+            user, chatId, messageId: null,
+            recipientQuery, occasion,
+            replaceExistingMessage: false, ct: ct);
+    }
+
     private async Task GenerateGreetingPreviewAsync(
         BirthdayBot.Domain.Entities.User user,
         long chatId,
@@ -1569,9 +1677,11 @@ public sealed class UpdateHandler : IUpdateHandler
         string fullName,
         string occasion,
         bool replaceExistingMessage,
-        CancellationToken ct)
+        CancellationToken ct,
+        Birthday? storedBirthday = null,
+        string? requestedRelation = null)
     {
-        var previewBirthday = new Birthday
+        var previewBirthday = storedBirthday ?? new Birthday
         {
             UserId = user.Id,
             Name = fullName,
@@ -1579,16 +1689,48 @@ public sealed class UpdateHandler : IUpdateHandler
             BirthYearKnown = false
         };
 
-        var draft = BuildGreetingPreviewDraft(user.Lang, previewBirthday.FullName, occasion);
+        if (!string.IsNullOrWhiteSpace(requestedRelation))
+        {
+            // The selected person is identified as this relative by the user's request.
+            // Use it only for greeting generation, without modifying the stored record.
+            previewBirthday = new Birthday
+            {
+                Id = previewBirthday.Id,
+                UserId = previewBirthday.UserId,
+                Name = previewBirthday.Name,
+                LastName = previewBirthday.LastName,
+                Date = previewBirthday.Date,
+                BirthYearKnown = previewBirthday.BirthYearKnown,
+                Relation = requestedRelation,
+                Profession = previewBirthday.Profession,
+                Interests = previewBirthday.Interests,
+                Notes = previewBirthday.Notes,
+                GreetingLanguage = previewBirthday.GreetingLanguage
+            };
+        }
+
+        int? age = null;
+        if (storedBirthday is not null && _tzdb.Ids.Contains(user.Timezone))
+        {
+            var today = SystemClock.Instance.GetCurrentInstant().InZone(_tzdb[user.Timezone]).Date;
+            (_, age) = DateHelpers.NextBirthdayOptionalAge(
+                today, storedBirthday.Date, storedBirthday.HasKnownBirthYear);
+        }
+
+        var draft = storedBirthday is not null
+            ? _greetings.GeneratePersonalized(user, previewBirthday, age)
+            : BuildGreetingPreviewDraft(user.Lang, previewBirthday.FullName, occasion);
+
         var enhanceSw = Stopwatch.StartNew();
-        var enhanced = await _enhancer.EnhanceAsync(user, previewBirthday, draft, age: null, ct);
+        var enhanced = await _enhancer.EnhanceAsync(user, previewBirthday, draft, age, ct);
         enhanceSw.Stop();
 
         var aiEvent = await _aiEvents.CreateAsync(new AiEvent
         {
             UserId = user.Id,
             TelegramUserId = user.TelegramUserId,
-            EventType = "enhance_test",
+            EventType = storedBirthday is null ? "enhance_test" : "enhance",
+            BirthdayId = storedBirthday?.Id,
             InputText = draft,
             OutputText = enhanced.Text,
             OutputVariants = ToVariantDictionary(enhanced),
@@ -1604,10 +1746,14 @@ public sealed class UpdateHandler : IUpdateHandler
         }, ct);
 
         var finalText = BuildRenderedGreeting(user.Lang, enhanced.Text, enhanced.IsFallback, _i18n.GetText(user.Lang, "ai_test_greeting_title"));
-        var keyboard = Keyboards.TestGreetingKb(
-            user.Lang,
-            $"ai:test:regen:{aiEvent.Id}",
-            enhanced.Variants is { Count: > 0 });
+        var keyboard = storedBirthday is null
+            ? Keyboards.TestGreetingKb(
+                user.Lang,
+                $"ai:test:regen:{aiEvent.Id}",
+                enhanced.Variants is { Count: > 0 })
+            : Keyboards.ReminderGreetingActionsKb(
+                user.Lang, aiEvent.Id.ToString(),
+                enhanced.Variants is { Count: > 0 });
         if (replaceExistingMessage && messageId.HasValue)
         {
             await SafeEditMessageAsync(chatId, messageId.Value, finalText, ParseMode.Html, keyboard, ct);
