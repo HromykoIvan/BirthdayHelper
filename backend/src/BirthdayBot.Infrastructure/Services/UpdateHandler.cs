@@ -42,6 +42,7 @@ public sealed class UpdateHandler : IUpdateHandler
     private readonly IUpcomingService _upcoming;
     private readonly AddBirthdayWizardFlow _wizard;
     private readonly TelegramBirthdayImportService _import;
+    private readonly VkImportService _vkImport;
     private readonly IDateTimeZoneProvider _tzdb;
     private readonly IIntentRouter _intentRouter;
     private readonly IAiGreetingEnhancer _enhancer;
@@ -61,6 +62,7 @@ public sealed class UpdateHandler : IUpdateHandler
         IUpcomingService upcoming,
         AddBirthdayWizardFlow wizard,
         TelegramBirthdayImportService import,
+        VkImportService vkImport,
         IIntentRouter intentRouter,
         IAiGreetingEnhancer enhancer,
         IGreetingGenerator greetings,
@@ -79,6 +81,7 @@ public sealed class UpdateHandler : IUpdateHandler
         _upcoming = upcoming;
         _wizard = wizard;
         _import = import;
+        _vkImport = vkImport;
         _intentRouter = intentRouter;
         _enhancer = enhancer;
         _greetings = greetings;
@@ -105,6 +108,13 @@ public sealed class UpdateHandler : IUpdateHandler
             var data = update.CallbackQuery?.Data;
             if (!string.IsNullOrEmpty(data))
             {
+                if (data == "vk:connect")
+                {
+                    var user = await EnsureUser(update.CallbackQuery!.From, ct);
+                    await _vkImport.BeginAsync(user, update.CallbackQuery, ct);
+                    return;
+                }
+
                 if (data.StartsWith("import:", StringComparison.Ordinal))
                 {
                     var user = await EnsureUser(update.CallbackQuery!.From, ct);
