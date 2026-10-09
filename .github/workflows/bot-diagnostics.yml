@@ -1,0 +1,97 @@
+name: BirthdayHelper Telegram diagnostics (read only)
+
+on:
+  push:
+    paths:
+      - ".github/workflows/bot-diagnostics.yml"
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: birthdayhelper-511100
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: github-deployer@birthdayhelper-511100.iam.gserviceaccount.com
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Check Cloud Run and Telegram webhook
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="birthdayhelper-511100"
+          REGION="europe-central2"
+          SERVICE="birthday-helper"
+          SERVICE_URL="$(gcloud run services describe "${SERVICE}" --project="${PROJECT}" --region="${REGION}" --format="value(status.url)")"
+          REVISION="$(gcloud run services describe "${SERVICE}" --project="${PROJECT}" --region="${REGION}" --format="value(status.latestReadyRevisionName)")"
+          echo "Cloud Run revision: ${REVISION}"
+
+          for path in /health /health/ready; do
+            status="$(curl --max-time 20 --silent --show-error --output /dev/null --write-out '%{http_code}' "${SERVICE_URL}${path}")"
+            echo "Cloud Run ${path} HTTP: ${status}"
+          done
+
+          TOKEN="$(gcloud secrets versions access latest --project="${PROJECT}" --secret="birthday-helper-telegram-token")"
+          TMP="$(mktemp)"
+          HTTP_STATUS="$(curl --max-time 20 --silent --show-error --output "${TMP}" --write-out '%{http_code}' "https://api.telegram.org/bot${TOKEN}/getWebhookInfo")"
+          unset TOKEN
+
+          echo "Telegram getWebhookInfo HTTP: ${HTTP_STATUS}"
+          python3 - "${TMP}" <<'PY'
+          import json
+          import sys
+          import datetime as dt
+          from urllib.parse import urlparse
+
+          with open(sys.argv[1], encoding="utf-8") as f:
+              data = json.load(f)
+          if not data.get("ok"):
+              print("Telegram API returned an error.")
+              raise SystemExit(1)
+          r = data.get("result", {})
+          url = r.get("url", "")
+          print("Webhook configured:", bool(url))
+          print("Webhook path:", urlparse(url).path if url else "<none>")
+          print("Pending updates:", r.get("pending_update_count", "?"))
+          print("Max connections:", r.get("max_connections", "?"))
+          for key in ["last_error_date", "last_synchronization_error_date"]:
+              stamp = r.get(key)
+              print(f"{key}:", dt.datetime.fromtimestamp(stamp, dt.timezone.utc).isoformat() if stamp else "none")
+          if r.get("last_error_message"):
+              # Telegram error messages are platform-generated diagnostics; avoid echoing possible URLs/user input.
+              message = r["last_error_message"]
+              status = "HTTP 5xx" if any(f"{x}" in message for x in range(500, 600)) else (
+                  "HTTP 4xx" if any(f"{x}" in message for x in range(400, 500)) else "other")
+              print("Last delivery error category:", status)
+              print("Last delivery error present:", True)
+          else:
+              print("Last delivery error present:", False)
+          PY
+          rm -f "${TMP}"
+
+      - name: Check recent Cloud Run errors (metadata only)
+        shell: bash
+        run: |
+          set +e
+          PROJECT="birthdayhelper-511100"
+          gcloud logging read \
+            'resource.type="cloud_run_revision" AND resource.labels.service_name="birthday-helper" AND severity>=ERROR AND timestamp>="2026-10-09T09:00:00Z"' \
+            --project="${PROJECT}" --limit=30 \
+            --format="value(severity)" > /tmp/birthday-error-severity.txt 2>/tmp/birthday-log-check-error.txt
+          rc=$?
+          if [[ $rc -eq 0 ]]; then
+            echo "Recent Cloud Run ERROR count (up to 30): $(wc -l < /tmp/birthday-error-severity.txt)"
+            sort /tmp/birthday-error-severity.txt | uniq -c
+          else
+            echo "Cloud Logging read unavailable to deploy identity (not a service failure)."
+          fi
