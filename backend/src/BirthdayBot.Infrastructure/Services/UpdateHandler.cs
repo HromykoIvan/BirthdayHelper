@@ -1268,6 +1268,29 @@ public sealed class UpdateHandler : IUpdateHandler
         return Math.Clamp(page, 0, lastPage);
     }
 
+    private static string FormatDaysUntil(Language lang, int days) =>
+        lang switch
+        {
+            Language.Ru => days switch
+            {
+                0 => "Сегодня",
+                1 => "Завтра",
+                _ => $"Через {days} дн."
+            },
+            Language.Pl => days switch
+            {
+                0 => "Dzisiaj",
+                1 => "Jutro",
+                _ => $"Za {days} dni"
+            },
+            _ => days switch
+            {
+                0 => "Today",
+                1 => "Tomorrow",
+                _ => $"In {days} days"
+            }
+        };
+
     private string YearWord(Language lang, int age)
     {
         return lang switch
@@ -1305,7 +1328,9 @@ public sealed class UpdateHandler : IUpdateHandler
             IsFallback = isFallback,
             FallbackReason = isFallback ? "no_match" : null,
             PromptVersion = _promptProfiles.IntentPromptVersion,
-            ModelSource = "local-intent-router",
+            ModelSource = intent.ModelSource,
+            InputTokens = intent.InputTokens,
+            OutputTokens = intent.OutputTokens,
             LatencyMs = parseSw.Elapsed.TotalMilliseconds
         }, ct);
 
@@ -1342,6 +1367,47 @@ public sealed class UpdateHandler : IUpdateHandler
 
             case UserIntentType.OpenList:
                 await SendCurrentMonthView(user, chatId, ct);
+                return true;
+
+            case UserIntentType.AddBirthdayFromText when intent.Birthday is not null:
+                await _wizard.StartFromDraftAsync(chatId, tgUser.Id, intent.Birthday, ct);
+                return true;
+
+            case UserIntentType.FindBirthday when !string.IsNullOrWhiteSpace(intent.EntityName):
+                var foundBirthday = await _birthdays.FindByNameAsync(user.Id, intent.EntityName, ct);
+                if (foundBirthday is null)
+                {
+                    await _bot.SendTextMessageAsync(
+                        chatId,
+                        _i18n.GetText(user.Lang, "entry_not_found"),
+                        replyMarkup: Keyboards.BackToMenuKb(user.Lang),
+                        cancellationToken: ct);
+                    return true;
+                }
+
+                var foundZone = _tzdb[user.Timezone];
+                var foundToday = SystemClock.Instance.GetCurrentInstant().InZone(foundZone).Date;
+                var (foundNext, foundAge) = DateHelpers.NextBirthdayOptionalAge(
+                    foundToday,
+                    foundBirthday.Date,
+                    foundBirthday.HasKnownBirthYear);
+                var daysUntil = Period.Between(foundToday, foundNext, PeriodUnits.Days).Days;
+                var foundDate = FormatBirthdayDate(foundBirthday);
+                var agePart = foundAge.HasValue
+                    ? $" · {foundAge.Value} {YearWord(user.Lang, foundAge.Value)}"
+                    : "";
+                var relationPart = string.IsNullOrWhiteSpace(foundBirthday.Relation)
+                    ? ""
+                    : $"\n👥 {Formatting.Html(foundBirthday.Relation)}";
+
+                await _bot.SendTextMessageAsync(
+                    chatId,
+                    $"🎂 <b>{Formatting.Html(foundBirthday.FullName)}</b>\n" +
+                    $"📅 {foundDate}{agePart}\n" +
+                    $"⏳ {FormatDaysUntil(user.Lang, daysUntil)}{relationPart}",
+                    parseMode: ParseMode.Html,
+                    replyMarkup: Keyboards.BackToMenuKb(user.Lang),
+                    cancellationToken: ct);
                 return true;
 
             case UserIntentType.RemoveByName when !string.IsNullOrWhiteSpace(intent.EntityName):
