@@ -269,12 +269,20 @@ public sealed class OpenAiIntentRouter : IIntentRouter
     private static IntentParseResult ToBirthdayDraft(
         IntentEnvelope x,
         OpenAiCallResult<IntentEnvelope> call,
-        double confidence) =>
-        new(
+        double confidence)
+    {
+        var firstName = x.FirstName.Trim();
+        // Guard against the model treating "мама" as a proper first name.
+        if (BirthdayRecipientMatcher.IsRelationship(firstName))
+        {
+            firstName = string.Empty;
+        }
+
+        return new IntentParseResult(
             UserIntentType.AddBirthdayFromText,
             EntityName: x.EntityName,
             Birthday: new BirthdayDraft(
-                x.FirstName.Trim(),
+                firstName,
                 EmptyToNull(x.LastName),
                 x.Day,
                 x.Month,
@@ -288,6 +296,7 @@ public sealed class OpenAiIntentRouter : IIntentRouter
             ModelSource: call.Model,
             InputTokens: call.InputTokens,
             OutputTokens: call.OutputTokens);
+    }
 
     private static bool IsValidDate(int day, int month, int year)
     {
