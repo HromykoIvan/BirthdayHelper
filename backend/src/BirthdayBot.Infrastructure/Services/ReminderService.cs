@@ -112,14 +112,20 @@ public sealed class ReminderService : IReminderService
                             EventType = "enhance_reminder",
                             InputText = draft,
                             OutputText = enhanced.Text,
+                            OutputVariants = enhanced.Variants?.ToDictionary(x => x.Style, x => x.Text),
                             IsFallback = enhanced.IsFallback,
                             FallbackReason = enhanced.FallbackReason,
                             PromptVersion = enhanced.PromptVersion,
                             ModelSource = enhanced.ModelSource,
+                            InputTokens = enhanced.InputTokens,
+                            OutputTokens = enhanced.OutputTokens,
                             LatencyMs = enhanceSw.Elapsed.TotalMilliseconds
                         }, ct);
 
-                        replyMarkup = Keyboards.ReminderGreetingActionsKb(user.Lang, aiEvent.Id.ToString());
+                        replyMarkup = Keyboards.ReminderGreetingActionsKb(
+                            user.Lang,
+                            aiEvent.Id.ToString(),
+                            enhanced.Variants is { Count: > 0 });
                     }
 
                     var sent = await _bot.SendTextMessageAsync(
