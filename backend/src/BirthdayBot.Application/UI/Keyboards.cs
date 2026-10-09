@@ -74,43 +74,78 @@ public static class Keyboards
         });
     }
 
-    public static InlineKeyboardMarkup TestGreetingKb(Language lang, string regenerateCallbackData)
+    public static InlineKeyboardMarkup TestGreetingKb(
+        Language lang,
+        string regenerateCallbackData,
+        bool hasVariants = false)
     {
-        return new(new[]
+        var eventId = regenerateCallbackData.Split(':').Last();
+        var rows = new List<InlineKeyboardButton[]>();
+
+        if (hasVariants)
         {
-            new[]
+            rows.Add(new[]
             {
-                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_regenerate"), regenerateCallbackData)
-            },
-            new[]
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_variant_warm"), $"ai:variant:warm:{eventId}"),
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_variant_short"), $"ai:variant:short:{eventId}")
+            });
+            rows.Add(new[]
             {
-                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_add_comment"), regenerateCallbackData.Replace("ai:test:regen:", "ai:test:comment:"))
-            },
-            new[]
-            {
-                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_use_as_example"), regenerateCallbackData.Replace("ai:test:regen:", "ai:test:accept:"))
-            },
-            new[]
-            {
-                InlineKeyboardButton.WithCallbackData(GetText(lang, "back_to_menu"), "menu:home")
-            }
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_variant_personal"), $"ai:variant:personal:{eventId}")
+            });
+        }
+
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_regenerate"), regenerateCallbackData)
         });
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_add_comment"), regenerateCallbackData.Replace("ai:test:regen:", "ai:test:comment:"))
+        });
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_use_as_example"), regenerateCallbackData.Replace("ai:test:regen:", "ai:test:accept:"))
+        });
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(GetText(lang, "back_to_menu"), "menu:home")
+        });
+
+        return new InlineKeyboardMarkup(rows);
     }
 
-    public static InlineKeyboardMarkup ReminderGreetingActionsKb(Language lang, string eventId)
+    public static InlineKeyboardMarkup ReminderGreetingActionsKb(
+        Language lang,
+        string eventId,
+        bool hasVariants = false)
     {
-        return new(new[]
+        var rows = new List<InlineKeyboardButton[]>();
+
+        if (hasVariants)
         {
-            new[]
+            rows.Add(new[]
             {
-                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_regenerate"), $"ai:improve:event:{eventId}")
-            },
-            new[]
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_variant_warm"), $"ai:variant:warm:{eventId}"),
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_variant_short"), $"ai:variant:short:{eventId}")
+            });
+            rows.Add(new[]
             {
-                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_add_comment"), $"ai:comment:event:{eventId}"),
-                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_use_as_example"), $"ai:accept:event:{eventId}")
-            }
+                InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_variant_personal"), $"ai:variant:personal:{eventId}")
+            });
+        }
+
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_regenerate"), $"ai:improve:event:{eventId}")
         });
+        rows.Add(new[]
+        {
+            InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_add_comment"), $"ai:comment:event:{eventId}"),
+            InlineKeyboardButton.WithCallbackData(GetText(lang, "ai_use_as_example"), $"ai:accept:event:{eventId}")
+        });
+
+        return new InlineKeyboardMarkup(rows);
     }
 
     // ── Language selection ──
