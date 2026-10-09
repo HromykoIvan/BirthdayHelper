@@ -80,9 +80,10 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
             throw new ArgumentException("Birthday draft has an invalid date.", nameof(draft));
         }
 
+        var missingName = string.IsNullOrWhiteSpace(draft.FirstName);
         var session = new AddBirthdayWizardSession(chatId, userId)
         {
-            Step = AddWizardStep.Confirm,
+            Step = missingName ? AddWizardStep.Name : AddWizardStep.Confirm,
             Name = draft.FirstName.Trim(),
             LastName = string.IsNullOrWhiteSpace(draft.LastName) ? null : draft.LastName.Trim(),
             Date = draft.ToDateOnly(),
@@ -94,6 +95,25 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
         };
 
         _store.Upsert(session);
+        if (missingName)
+        {
+            var lang = await ResolveLanguageAsync(userId, ct);
+            var dateLabel = FormatSessionDate(session);
+            var relation = string.IsNullOrWhiteSpace(session.Relation) ? "" : $" ({Formatting.Html(session.Relation)})";
+            var prompt = lang switch
+            {
+                Language.Ru => $"Запомнил дату <b>{dateLabel}</b>{relation}. Как зовут именинника?",
+                Language.Pl => $"Zapamiętałem datę <b>{dateLabel}</b>{relation}. Jak ma na imię ta osoba?",
+                _ => $"I have the date <b>{dateLabel}</b>{relation}. What is this person's name?"
+            };
+            await _bot.SendTextMessageAsync(
+                chatId, prompt,
+                parseMode: ParseMode.Html,
+                replyMarkup: NameKb(lang),
+                cancellationToken: ct);
+            return;
+        }
+
         await SendConfirmation(chatId, session, ct);
     }
 
@@ -286,6 +306,15 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
                         }
 
                         s.Name = name;
+                        if (s.Date.HasValue)
+                        {
+                            // The AI already extracted the birthday; do not ask for it again.
+                            s.Step = AddWizardStep.Confirm;
+                            _store.Upsert(s);
+                            await SendConfirmation(chatId, s, ct);
+                            return true;
+                        }
+
                         s.Step = AddWizardStep.LastName;
                         _store.Upsert(s);
 
@@ -538,6 +567,16 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
             ? ""
             : $"💡 {Formatting.Html(s.Interests)}\n";
 
+        if (!string.IsNullOrWhiteSpace(s.Profession))
+        {
+            interests += $"💼 {Formatting.Html(s.Profession)}\n";
+        }
+
+        if (!string.IsNullOrWhiteSpace(s.Notes))
+        {
+            interests += $"📝 {Formatting.Html(s.Notes)}\n";
+        }
+
         var text = string.Format(
             _i18n.GetText(lang, "confirm_summary"),
             fullName,
@@ -571,30 +610,23 @@ public sealed class AddBirthdayWizardFlow : IWizardFlow
 
     private static bool TryParseDate(string input, out DateOnly date, out bool yearKnown)
     {
-        input = input.Trim();
-        yearKnown = true;
-
-        if (input.Equals("📅 Сегодня", StringComparison.OrdinalIgnoreCase) ||
-            input.Equals("Сегодня", StringComparison.OrdinalIgnoreCase))
-        { date = DateOnly.FromDateTime(DateTime.UtcNow); return true; }
-
-        if (input.Equals("📅 Завтра", StringComparison.OrdinalIgnoreCase) ||
-            input.Equals("Завтра", StringComparison.OrdinalIgnoreCase))
-        { date = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)); return true; }
-
-        var m = DateRegex.Match(input);
-        if (!m.Success)
+        if (input.Trim().Equals("Сегодня", StringComparison.OrdinalIgnoreCase) ||
+            input.Trim().Equals("📅 Сегодня", StringComparison.OrdinalIgnoreCase))
         {
-            date = default;
-            return false;
+            date = DateOnly.FromDateTime(DateTime.UtcNow);
+            yearKnown = true;
+            return true;
         }
 
-        var d = int.Parse(m.Groups["d"].Value);
-        var mm = int.Parse(m.Groups["m"].Value);
-        yearKnown = m.Groups["y"].Success;
-        var year = yearKnown ? int.Parse(m.Groups["y"].Value) : 2000;
+        if (input.Trim().Equals("Завтра", StringComparison.OrdinalIgnoreCase) ||
+            input.Trim().Equals("📅 Завтра", StringComparison.OrdinalIgnoreCase))
+        {
+            date = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1));
+            yearKnown = true;
+            return true;
+        }
 
-        return DateOnly.TryParse($"{year:D4}-{mm:D2}-{d:D2}", out date);
+        return BirthdayDateParser.TryParse(input, out date, out yearKnown);
     }
 
     private static string FormatSessionDate(AddBirthdayWizardSession session)

@@ -15,7 +15,11 @@ public sealed class LocalIntentRouter : IIntentRouter
         @"^(удали|удалить|remove|delete|usun|usu[ńn])\s+(?<name>.+)$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex GreetingPreviewRegex = new(
-        @"^(сгенерируй|создай|generate)\s+(поздравление|greeting)\s+для\s+(?<name>.+?)\s+на\s+(?<occasion>.+)$",
+        @"^(?:придумай|напиши|составь|сгенерируй|создай|generate|write|create|napisz|wymyśl)\s+" +
+        @"(?:(?:красивое|теплое|тёплое|короткое|личное|personal|short|warm)\s+)?" +
+        @"(?:поздравление|пожелание|greeting|birthday\s+greeting|życzenia)" +
+        @"(?:\s+с\s+дн[её]м\s+рождения)?\s+(?:для|for|dla)\s+" +
+        @"(?<name>.+?)(?:\s+на\s+(?<occasion>.+))?$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private readonly IDateTimeZoneProvider _tzdb;
@@ -77,7 +81,9 @@ public sealed class LocalIntentRouter : IIntentRouter
             if (greetingMatch.Success)
             {
                 var name = greetingMatch.Groups["name"].Value.Trim();
-                var occasion = greetingMatch.Groups["occasion"].Value.Trim();
+                var occasion = greetingMatch.Groups["occasion"].Success
+                    ? greetingMatch.Groups["occasion"].Value.Trim()
+                    : "birthday";
                 if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(occasion))
                 {
                     return Task.FromResult(IntentParseResult.ForGreetingPreview(name, occasion));
